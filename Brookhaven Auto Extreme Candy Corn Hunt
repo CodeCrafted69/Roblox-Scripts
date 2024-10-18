@@ -1,0 +1,20 @@
+local player = game.Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+
+-- Get the folder containing the eggys
+local eggyFolder = workspace["Easter001!"].EasterEggExtreme:GetChildren()
+
+-- Function to teleport the player to a position
+local function teleportToPosition(position)
+    humanoidRootPart.CFrame = CFrame.new(position)
+end
+
+-- Iterate through each eggy in the folder and teleport to it
+for index = 1, #eggyFolder do
+    local eggy = eggyFolder[index] -- Get the eggy at the current index
+    if eggy:IsA("BasePart") then -- Ensure it's a physical part
+        teleportToPosition(eggy.Position)
+        wait(1) -- Add a small delay between teleports
+    end
+end
