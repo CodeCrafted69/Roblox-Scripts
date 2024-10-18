@@ -3,7 +3,7 @@ local character = player.Character or player.CharacterAdded:Wait()
 local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
 
 -- Get the folder containing the eggys
-local eggyFolder = workspace["Easter001!"].EasterUltimate:GetChildren()
+local eggyFolder = workspace["Easter001!"].EasterEggUltimate:GetChildren()
 
 -- Function to teleport the player to a position
 local function teleportToPosition(position)
