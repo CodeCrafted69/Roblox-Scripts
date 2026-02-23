@@ -156,15 +156,10 @@ local ContentArea = Instance.new("Frame")
 ContentArea.Size = UDim2.new(1,0,1,-CONTENT_Y); ContentArea.Position = UDim2.new(0,0,0,CONTENT_Y)
 ContentArea.BackgroundTransparency = 1; ContentArea.ZIndex = 10; ContentArea.Parent = Main
 
--- ========================
--- CUSTOM SCROLLBAR
--- ========================
-local SB_W   = 5
-local SB_PAD = 10
-
+local SB_W = 5; local SB_PAD = 10
 local sbTrack = Instance.new("Frame")
-sbTrack.Size = UDim2.new(0, SB_W, 1, -(SB_PAD*2 + CONTENT_Y))
-sbTrack.Position = UDim2.new(1, -(SB_W + 4), 0, CONTENT_Y + SB_PAD)
+sbTrack.Size = UDim2.new(0,SB_W,1,-(SB_PAD*2+CONTENT_Y))
+sbTrack.Position = UDim2.new(1,-(SB_W+4),0,CONTENT_Y+SB_PAD)
 sbTrack.BackgroundColor3 = C.SurfaceC; sbTrack.BorderSizePixel = 0
 sbTrack.Visible = false; sbTrack.ZIndex = 20; sbTrack.Parent = Main
 corner(sbTrack, UDim.new(1,0))
@@ -178,28 +173,20 @@ local function updateScrollbar(sf)
     local trackH = sbTrack.AbsoluteSize.Y
     if trackH <= 0 then return end
     local contentH = sf.CanvasSize.Y.Offset
-    local frameH   = sf.AbsoluteSize.Y
+    local frameH = sf.AbsoluteSize.Y
     if contentH <= frameH then sbTrack.Visible = false; return end
     sbTrack.Visible = true
-    local ratio    = math.clamp(frameH / contentH, 0, 1)
-    local thumbH   = math.max(28, trackH * ratio)
+    local ratio = math.clamp(frameH/contentH, 0, 1)
+    local thumbH = math.max(28, trackH*ratio)
     local maxScroll = contentH - frameH
-    local scrollPct = maxScroll > 0 and math.clamp(sf.CanvasPosition.Y / maxScroll, 0, 1) or 0
-    sbThumb.Size     = UDim2.new(1, 0, 0, thumbH)
-    sbThumb.Position = UDim2.new(0, 0, 0, scrollPct * (trackH - thumbH))
+    local scrollPct = maxScroll > 0 and math.clamp(sf.CanvasPosition.Y/maxScroll, 0, 1) or 0
+    sbThumb.Size = UDim2.new(1,0,0,thumbH)
+    sbThumb.Position = UDim2.new(0,0,0,scrollPct*(trackH-thumbH))
 end
 
--- ========================
--- WARNING STATE
--- ========================
-local warningAcknowledged  = false
+local warningAcknowledged = false
 local playerTabWarningActive = false
-
--- ========================
--- TAB SYSTEM
--- ========================
 local tabs = {}; local tabPages = {}; local activeTab = nil
-
 local tabDefs = {
     {key="Home",   label="Home",   icon="👤", idx=0},
     {key="Visual", label="Visual", icon="👁",  idx=1},
@@ -207,8 +194,8 @@ local tabDefs = {
     {key="Misc",   label="Misc",   icon="⚙",  idx=3},
 }
 
-local switchTab  -- forward declare so warning buttons can call it
-local warningOverlay -- forward declare
+local switchTab
+local warningOverlay
 
 local function showPlayerWarning()
     playerTabWarningActive = true
@@ -289,60 +276,42 @@ for _, def in ipairs(tabDefs) do
     btn.MouseButton1Click:Connect(function() switchTab(def.key) end)
 end
 
--- ========================
--- WARNING OVERLAY (Player Tab)
--- Must be created after tabPages are built, before content is added
--- ========================
 warningOverlay = Instance.new("Frame")
-warningOverlay.Size = UDim2.new(1, 0, 1, -CONTENT_Y)
-warningOverlay.Position = UDim2.new(0, 0, 0, CONTENT_Y)
-warningOverlay.BackgroundColor3 = Color3.fromRGB(4, 8, 6)
+warningOverlay.Size = UDim2.new(1,0,1,-CONTENT_Y)
+warningOverlay.Position = UDim2.new(0,0,0,CONTENT_Y)
+warningOverlay.BackgroundColor3 = Color3.fromRGB(4,8,6)
 warningOverlay.BackgroundTransparency = 0.08
-warningOverlay.BorderSizePixel = 0
-warningOverlay.Visible = false
-warningOverlay.ZIndex = 22
-warningOverlay.Parent = Main
--- Blurred grid pattern to simulate blur
+warningOverlay.BorderSizePixel = 0; warningOverlay.Visible = false
+warningOverlay.ZIndex = 22; warningOverlay.Parent = Main
 local blurLines = Instance.new("UIGradient")
 blurLines.Color = ColorSequence.new({
     ColorSequenceKeypoint.new(0, Color3.fromRGB(4,12,7)),
     ColorSequenceKeypoint.new(0.5, Color3.fromRGB(8,20,12)),
     ColorSequenceKeypoint.new(1, Color3.fromRGB(4,12,7)),
 })
-blurLines.Rotation = 45
-blurLines.Parent = warningOverlay
+blurLines.Rotation = 45; blurLines.Parent = warningOverlay
 
--- Warning card
 local warnCard = Instance.new("Frame")
-warnCard.Size = UDim2.new(1, -48, 0, 230)
-warnCard.Position = UDim2.new(0, 24, 0.5, -115)
-warnCard.BackgroundColor3 = C.WarnDeep
-warnCard.BorderSizePixel = 0; warnCard.ZIndex = 23; warnCard.Parent = warningOverlay
+warnCard.Size = UDim2.new(1,-48,0,230); warnCard.Position = UDim2.new(0,24,0.5,-115)
+warnCard.BackgroundColor3 = C.WarnDeep; warnCard.BorderSizePixel = 0
+warnCard.ZIndex = 23; warnCard.Parent = warningOverlay
 corner(warnCard, UDim.new(0,16)); mkStroke(warnCard, C.Warn, 1.5)
-
--- Warning glow
 local warnGlow = Instance.new("ImageLabel")
 warnGlow.Size = UDim2.new(1,46,1,46); warnGlow.Position = UDim2.new(0,-23,0,-23)
 warnGlow.BackgroundTransparency = 1; warnGlow.Image = "rbxassetid://5554236805"
 warnGlow.ImageColor3 = C.Warn; warnGlow.ImageTransparency = 0.75
 warnGlow.ScaleType = Enum.ScaleType.Slice; warnGlow.SliceCenter = Rect.new(23,23,277,277)
 warnGlow.ZIndex = 22; warnGlow.Parent = warnCard
-
--- Warning icon
 local warnIcon = Instance.new("TextLabel")
 warnIcon.Size = UDim2.new(1,0,0,46); warnIcon.Position = UDim2.new(0,0,0,18)
 warnIcon.BackgroundTransparency = 1; warnIcon.Text = "⚠"
 warnIcon.TextColor3 = C.Warn; warnIcon.TextSize = 36; warnIcon.Font = Enum.Font.GothamBold
 warnIcon.TextXAlignment = Enum.TextXAlignment.Center; warnIcon.ZIndex = 24; warnIcon.Parent = warnCard
-
--- Warning title
 local warnTitle = Instance.new("TextLabel")
 warnTitle.Size = UDim2.new(1,-24,0,22); warnTitle.Position = UDim2.new(0,12,0,68)
 warnTitle.BackgroundTransparency = 1; warnTitle.Text = "WARNING"
 warnTitle.TextColor3 = C.Warn; warnTitle.TextSize = 15; warnTitle.Font = Enum.Font.GothamBold
 warnTitle.TextXAlignment = Enum.TextXAlignment.Center; warnTitle.ZIndex = 24; warnTitle.Parent = warnCard
-
--- Warning body
 local warnBody = Instance.new("TextLabel")
 warnBody.Size = UDim2.new(1,-24,0,72); warnBody.Position = UDim2.new(0,12,0,94)
 warnBody.BackgroundTransparency = 1
@@ -350,13 +319,9 @@ warnBody.Text = "Using these Features May Get You Banned\nUse At Your Own Risk!"
 warnBody.TextColor3 = C.TextMid; warnBody.TextSize = 12; warnBody.Font = Enum.Font.GothamMedium
 warnBody.TextXAlignment = Enum.TextXAlignment.Center; warnBody.TextWrapped = true
 warnBody.ZIndex = 24; warnBody.Parent = warnCard
-
--- Divider
 local warnDiv = Instance.new("Frame")
 warnDiv.Size = UDim2.new(1,-24,0,1); warnDiv.Position = UDim2.new(0,12,0,170)
 warnDiv.BackgroundColor3 = C.WarnDim; warnDiv.BorderSizePixel = 0; warnDiv.ZIndex = 24; warnDiv.Parent = warnCard
-
--- Ok button
 local warnOk = Instance.new("TextButton")
 warnOk.Size = UDim2.new(0.5,-16,0,36); warnOk.Position = UDim2.new(0,12,0,180)
 warnOk.BackgroundColor3 = C.AccentGlow; warnOk.BorderSizePixel = 0
@@ -364,68 +329,46 @@ warnOk.Text = "✓  I Understand"; warnOk.TextColor3 = C.Accent
 warnOk.TextSize = 12; warnOk.Font = Enum.Font.GothamBold; warnOk.ZIndex = 25; warnOk.Parent = warnCard
 corner(warnOk, UDim.new(0,9)); mkStroke(warnOk, C.AccentDim, 1.5)
 warnOk.MouseButton1Click:Connect(function()
-    warningAcknowledged = true
-    hidePlayerWarning()
+    warningAcknowledged = true; hidePlayerWarning()
 end)
 warnOk.MouseEnter:Connect(function() tw(warnOk,{BackgroundColor3=C.AccentDim},0.12) end)
 warnOk.MouseLeave:Connect(function() tw(warnOk,{BackgroundColor3=C.AccentGlow},0.12) end)
-
--- Cancel button
 local warnCancel = Instance.new("TextButton")
 warnCancel.Size = UDim2.new(0.5,-16,0,36); warnCancel.Position = UDim2.new(0.5,4,0,180)
 warnCancel.BackgroundColor3 = Color3.fromRGB(50,15,15); warnCancel.BorderSizePixel = 0
 warnCancel.Text = "✕  Go Back"; warnCancel.TextColor3 = Color3.fromRGB(220,100,100)
 warnCancel.TextSize = 12; warnCancel.Font = Enum.Font.GothamBold; warnCancel.ZIndex = 25; warnCancel.Parent = warnCard
 corner(warnCancel, UDim.new(0,9)); mkStroke(warnCancel, Color3.fromRGB(120,40,40), 1.5)
-warnCancel.MouseButton1Click:Connect(function()
-    -- Don't acknowledge, just go back to home — warning stays for next visit
-    switchTab("Home")
-end)
+warnCancel.MouseButton1Click:Connect(function() switchTab("Home") end)
 warnCancel.MouseEnter:Connect(function() tw(warnCancel,{BackgroundColor3=Color3.fromRGB(80,20,20)},0.12) end)
 warnCancel.MouseLeave:Connect(function() tw(warnCancel,{BackgroundColor3=Color3.fromRGB(50,15,15)},0.12) end)
 
--- ========================
--- GLOBAL MOBILE SCROLL (uses UIS directly, not per-element hooks)
--- ========================
 local function setupMobileScroll(scrollFrame)
-    local scrolling   = false
-    local startY      = 0
-    local startCanvas = 0
-
+    local scrolling = false; local startY = 0; local startCanvas = 0
     local function insideBounds(pos)
-        local ap = scrollFrame.AbsolutePosition
-        local as = scrollFrame.AbsoluteSize
-        return pos.X >= ap.X and pos.X <= ap.X + as.X
-           and pos.Y >= ap.Y and pos.Y <= ap.Y + as.Y
+        local ap = scrollFrame.AbsolutePosition; local as = scrollFrame.AbsoluteSize
+        return pos.X >= ap.X and pos.X <= ap.X+as.X and pos.Y >= ap.Y and pos.Y <= ap.Y+as.Y
     end
-
     UserInputService.InputBegan:Connect(function(inp)
         if inp.UserInputType ~= Enum.UserInputType.Touch then return end
         if playerTabWarningActive then return end
         if scrollFrame.Visible and insideBounds(inp.Position) then
-            scrolling   = true
-            startY      = inp.Position.Y
-            startCanvas = scrollFrame.CanvasPosition.Y
+            scrolling = true; startY = inp.Position.Y; startCanvas = scrollFrame.CanvasPosition.Y
         end
     end)
-
     UserInputService.InputChanged:Connect(function(inp)
         if not scrolling then return end
         if inp.UserInputType ~= Enum.UserInputType.Touch then return end
         local delta = startY - inp.Position.Y
-        local maxY  = math.max(0, scrollFrame.CanvasSize.Y.Offset - scrollFrame.AbsoluteSize.Y)
-        scrollFrame.CanvasPosition = Vector2.new(0, math.clamp(startCanvas + delta, 0, maxY))
+        local maxY = math.max(0, scrollFrame.CanvasSize.Y.Offset - scrollFrame.AbsoluteSize.Y)
+        scrollFrame.CanvasPosition = Vector2.new(0, math.clamp(startCanvas+delta, 0, maxY))
     end)
-
     UserInputService.InputEnded:Connect(function(inp)
         if inp.UserInputType ~= Enum.UserInputType.Touch then return end
         scrolling = false
     end)
 end
 
--- ========================
--- HELPERS
--- ========================
 local function sectionLbl(parent, text, order)
     local f=Instance.new("Frame"); f.Size=UDim2.new(1,0,0,20); f.BackgroundTransparency=1
     f.LayoutOrder=order; f.ZIndex=12; f.Parent=parent
@@ -551,9 +494,7 @@ local function makeActionBtn(parent, label, bgColor, order, onClick)
     return btn
 end
 
--- ========================
 -- HOME TAB
--- ========================
 local homePage = tabPages["Home"]
 local profileCard=Instance.new("Frame"); profileCard.Size=UDim2.new(1,0,0,110)
 profileCard.BackgroundColor3=C.Surface; profileCard.BorderSizePixel=0
@@ -606,10 +547,10 @@ uidPillTxt.TextColor3=C.TextMid; uidPillTxt.TextSize=9; uidPillTxt.Font=Enum.Fon
 uidPillTxt.ZIndex=14; uidPillTxt.Parent=uidPill
 sectionLbl(homePage,"SERVER",2)
 local _,playerCountVal=infoRow(homePage,"Players in Server","...",3)
-local _,serverIdVal   =infoRow(homePage,"Server ID","...",4)
+local _,serverIdVal=infoRow(homePage,"Server ID","...",4)
 sectionLbl(homePage,"GAME",5)
 local _,gameNameVal=infoRow(homePage,"Game Name","...",6)
-local _,gameIdVal  =infoRow(homePage,"Place ID",tostring(game.PlaceId),7)
+local _,gameIdVal=infoRow(homePage,"Place ID",tostring(game.PlaceId),7)
 task.spawn(function()
     local ok1,sid=pcall(function() return game.JobId end)
     serverIdVal.Text=(ok1 and sid and sid~="") and (sid:sub(1,16).."...") or "N/A"
@@ -623,9 +564,7 @@ task.spawn(function()
     else gameNameVal.Text="Unknown" end
 end)
 
--- ========================
 -- VISUAL TAB
--- ========================
 local visualPage=tabPages["Visual"]
 local highlightOn=false; local activeHighlights={}
 local function applyHighlight(model)
@@ -648,9 +587,7 @@ hlHit.MouseButton1Click:Connect(function()
     end
 end)
 
--- ========================
 -- PLAYER TAB
--- ========================
 local playerPage = tabPages["Player"]
 setupMobileScroll(playerPage)
 
@@ -664,7 +601,6 @@ local function getChar() return LocalPlayer.Character end
 local function getHRP() local c=getChar(); return c and c:FindFirstChild("HumanoidRootPart") end
 local function getHum() local c=getChar(); return c and c:FindFirstChildOfClass("Humanoid") end
 
--- Speed/Jump sync
 local speedSyncConn=nil; local jumpSyncConn=nil
 local function startSpeedSync()
     if speedSyncConn then speedSyncConn:Disconnect() end
@@ -697,7 +633,6 @@ local function stopJumpSync() if jumpSyncConn then jumpSyncConn:Disconnect(); ju
 local function applySpeed(v) sliderSpeed=v; if not speedOverride then return end; local h=getHum(); if h then h.WalkSpeed=v end end
 local function applyJump(v) sliderJump=v; if not jumpOverride then return end; local h=getHum(); if h then h.JumpPower=v end end
 
--- Godmode
 local function disableLavaPart(part)
     if not part or not part:IsA("Part") then return end
     for _,e in ipairs(disabledParts) do if e.part==part then return end end
@@ -718,9 +653,6 @@ local function disableGodmode()
     disabledParts={}
 end
 
--- ========================
--- FLY - fully directional (camera pitch included)
--- ========================
 local function enableFly()
     local hrp=getHRP(); local hum=getHum(); if not hrp or not hum then return end
     if flyBodyVel then flyBodyVel:Destroy() end; if flyBodyGyro then flyBodyGyro:Destroy() end
@@ -733,33 +665,22 @@ local function enableFly()
         if not flyEnabled then return end
         local hrp2=getHRP(); if not hrp2 then return end
         local cf=workspace.CurrentCamera.CFrame
-        local camLook  = cf.LookVector   -- full 3D direction (includes pitch)
-        local camRight = cf.RightVector  -- full 3D right
-        local move=Vector3.zero
-        local hum2=getHum()
-
-        -- PC keys: fully directional using camera's real 3D vectors
+        local camLook=cf.LookVector; local camRight=cf.RightVector
+        local move=Vector3.zero; local hum2=getHum()
         if UserInputService:IsKeyDown(Enum.KeyCode.W) then move=move+camLook end
         if UserInputService:IsKeyDown(Enum.KeyCode.S) then move=move-camLook end
         if UserInputService:IsKeyDown(Enum.KeyCode.A) then move=move-camRight end
         if UserInputService:IsKeyDown(Enum.KeyCode.D) then move=move+camRight end
-        if UserInputService:IsKeyDown(Enum.KeyCode.Space) or flyUp   then move=move+Vector3.new(0,1,0) end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) or flyUp then move=move+Vector3.new(0,1,0) end
         if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or flyDown then move=move-Vector3.new(0,1,0) end
-
-        -- Mobile joystick: map joystick intent to full 3D camera direction
         if hum2 and hum2.MoveDirection.Magnitude>0.1 then
             local md=hum2.MoveDirection
-            -- Flat camera vectors to determine joystick intent amounts
-            local flatLook  = Vector3.new(camLook.X,  0, camLook.Z)
-            local flatRight = Vector3.new(camRight.X, 0, camRight.Z)
-            if flatLook.Magnitude  > 0.001 then flatLook  = flatLook.Unit  end
-            if flatRight.Magnitude > 0.001 then flatRight = flatRight.Unit end
-            local fwd   = md:Dot(flatLook)   -- how much joystick pushes camera-forward
-            local right = md:Dot(flatRight)  -- how much joystick pushes camera-right
-            -- Apply to full 3D camera direction so pitch is respected
-            move = move + camLook*fwd + camRight*right
+            local flatLook=Vector3.new(camLook.X,0,camLook.Z); local flatRight=Vector3.new(camRight.X,0,camRight.Z)
+            if flatLook.Magnitude>0.001 then flatLook=flatLook.Unit end
+            if flatRight.Magnitude>0.001 then flatRight=flatRight.Unit end
+            local fwd=md:Dot(flatLook); local right=md:Dot(flatRight)
+            move=move+camLook*fwd+camRight*right
         end
-
         if move.Magnitude>0 then move=move.Unit end
         bv.Velocity=move*FLY_SPEED; bg.CFrame=cf
     end)
@@ -772,15 +693,12 @@ local function disableFly()
     local h=getHum(); if h then h.PlatformStand=false end
 end
 
--- ========================
--- FLING - toggle, spin + touch flings other players
--- ========================
 local function enableFling()
     local hrp=getHRP(); if not hrp then return end
     if flingBAV then flingBAV:Destroy() end
     flingBAV=Instance.new("BodyAngularVelocity")
-    flingBAV.AngularVelocity=Vector3.new(0, 9999, 0)
-    flingBAV.MaxTorque=Vector3.new(0, math.huge, 0)
+    flingBAV.AngularVelocity=Vector3.new(0,9999,0)
+    flingBAV.MaxTorque=Vector3.new(0,math.huge,0)
     flingBAV.Parent=hrp
     local char=getChar()
     if flingTouchConn then flingTouchConn:Disconnect() end
@@ -814,11 +732,10 @@ local function disableFling()
     if flingTouchConn then flingTouchConn:Disconnect(); flingTouchConn=nil end
 end
 
--- Respawn handler
 LocalPlayer.CharacterAdded:Connect(function()
     task.wait(0.5)
     if speedOverride then local h=getHum(); if h then h.WalkSpeed=sliderSpeed end else startSpeedSync() end
-    if jumpOverride  then local h=getHum(); if h then h.JumpPower=sliderJump  end else startJumpSync()  end
+    if jumpOverride then local h=getHum(); if h then h.JumpPower=sliderJump end else startJumpSync() end
     if flyEnabled then task.wait(0.2); enableFly() end
     if flingEnabled then task.wait(0.2); enableFling() end
     if godmodeOn then
@@ -827,7 +744,6 @@ LocalPlayer.CharacterAdded:Connect(function()
     end
 end)
 
--- Fly mobile buttons
 local FlyPanel=Instance.new("Frame")
 FlyPanel.Size=UDim2.new(0,120,0,56); FlyPanel.Position=UDim2.new(1,-136,1,-176)
 FlyPanel.BackgroundTransparency=1; FlyPanel.Visible=false; FlyPanel.ZIndex=150; FlyPanel.Parent=ScreenGui
@@ -847,10 +763,9 @@ local function makeMobileBtn(txt,xPos,onDown,onUp)
         end
     end)
 end
-makeMobileBtn("▲",0,  function() flyUp=true  end, function() flyUp=false  end)
-makeMobileBtn("▼",62, function() flyDown=true end, function() flyDown=false end)
+makeMobileBtn("▲",0,function() flyUp=true end,function() flyUp=false end)
+makeMobileBtn("▼",62,function() flyDown=true end,function() flyDown=false end)
 
--- Player tab content
 sectionLbl(playerPage,"MOVEMENT",1)
 local _,spTogTrack,spTogKnob,spTogHit,spTogStr=toggleRow(playerPage,"Custom Speed","Off: mirrors game HUD speed  |  On: slider controls speed",2)
 spTogHit.MouseButton1Click:Connect(function()
@@ -935,10 +850,10 @@ makeActionBtn(playerPage,"🔄  Reset Character",C.Surface,15,function()
     local hum=getHum(); if hum then hum.Health=0 end
 end)
 
--- ========================
 -- MISC TAB
--- ========================
-local miscPage=tabPages["Misc"]; local selectedBrainrots={}; local allBrainrots={}; local dropdownItems={}; local dropOpen=false
+local miscPage=tabPages["Misc"]
+local selectedBrainrots={}; local allBrainrots={}; local dropdownItems={}; local dropOpen=false
+
 sectionLbl(miscPage,"BRAINROT MONITOR",1)
 local DropBtn=Instance.new("TextButton"); DropBtn.Size=UDim2.new(1,0,0,40)
 DropBtn.BackgroundColor3=C.Surface; DropBtn.BorderSizePixel=0; DropBtn.Text=""; DropBtn.LayoutOrder=2; DropBtn.ZIndex=12; DropBtn.Parent=miscPage
@@ -1067,6 +982,36 @@ local function filterDropdown(q)
 end
 SearchBox:GetPropertyChangedSignal("Text"):Connect(function() filterDropdown(SearchBox.Text) end)
 
+-- KEY FIX: extracted into its own function to avoid hitting 200 local limit in loadBrainrots
+local function createDropdownItem(name, i)
+    local item=Instance.new("TextButton"); item.Size=UDim2.new(1,0,0,32)
+    item.BackgroundColor3=C.Surface; item.BorderSizePixel=0; item.Text=""; item.LayoutOrder=i; item.ZIndex=15; item.Parent=DropList
+    table.insert(dropdownItems,item); corner(item,UDim.new(0,7))
+    local cbox=Instance.new("Frame"); cbox.Size=UDim2.new(0,15,0,15); cbox.Position=UDim2.new(0,9,0.5,-7.5)
+    cbox.BackgroundColor3=C.Bg; cbox.BorderSizePixel=0; cbox.ZIndex=16; cbox.Parent=item; corner(cbox,UDim.new(0,4))
+    local cStr=mkStroke(cbox,C.Border,1.5)
+    local cFill=Instance.new("Frame"); cFill.Size=UDim2.new(0,7,0,7); cFill.Position=UDim2.new(0.5,-3.5,0.5,-3.5)
+    cFill.BackgroundColor3=C.Text; cFill.BorderSizePixel=0; cFill.Visible=false; cFill.ZIndex=17; cFill.Parent=cbox; corner(cFill,UDim.new(0,2))
+    local iLbl=Instance.new("TextLabel"); iLbl.Size=UDim2.new(1,-34,1,0); iLbl.Position=UDim2.new(0,30,0,0)
+    iLbl.BackgroundTransparency=1; iLbl.Text=name; iLbl.TextColor3=C.Text; iLbl.TextSize=12
+    iLbl.Font=Enum.Font.Gotham; iLbl.TextXAlignment=Enum.TextXAlignment.Left; iLbl.ZIndex=16; iLbl.Parent=item
+    local iSel=false
+    item.MouseButton1Click:Connect(function()
+        iSel=not iSel
+        if iSel then
+            table.insert(selectedBrainrots,name); cFill.Visible=true; cbox.BackgroundColor3=C.Accent; cStr.Color=C.Accent; tw(item,{BackgroundColor3=C.AccentDeep},0.15)
+        else
+            for j,n in ipairs(selectedBrainrots) do if n==name then table.remove(selectedBrainrots,j); break end end
+            cFill.Visible=false; cbox.BackgroundColor3=C.Bg; cStr.Color=C.Border; tw(item,{BackgroundColor3=C.Surface},0.15)
+        end
+        local cnt=#selectedBrainrots
+        DropBtnTxt.Text=cnt==0 and "Select brainrots to monitor..." or (cnt.." brainrot"..(cnt>1 and "s" or "").." selected")
+        DropBtnTxt.TextColor3=cnt==0 and C.TextDim or C.Text; updateActiveList()
+    end)
+    item.MouseEnter:Connect(function() if not iSel then tw(item,{BackgroundColor3=C.SurfaceC},0.1) end end)
+    item.MouseLeave:Connect(function() if not iSel then tw(item,{BackgroundColor3=C.Surface},0.1) end end)
+end
+
 local function loadBrainrots()
     local folder=ReplicatedStorage:FindFirstChild("Brainrots")
     if not folder then warn("[ProjectCrafted] ReplicatedStorage.Brainrots not found"); return end
@@ -1076,32 +1021,7 @@ local function loadBrainrots()
     allBrainrots=unique
     for _,it in pairs(dropdownItems) do it:Destroy() end; dropdownItems={}
     for i,name in ipairs(allBrainrots) do
-        local item=Instance.new("TextButton"); item.Size=UDim2.new(1,0,0,32)
-        item.BackgroundColor3=C.Surface; item.BorderSizePixel=0; item.Text=""; item.LayoutOrder=i; item.ZIndex=15; item.Parent=DropList
-        table.insert(dropdownItems,item); corner(item,UDim.new(0,7))
-        local cbox=Instance.new("Frame"); cbox.Size=UDim2.new(0,15,0,15); cbox.Position=UDim2.new(0,9,0.5,-7.5)
-        cbox.BackgroundColor3=C.Bg; cbox.BorderSizePixel=0; cbox.ZIndex=16; cbox.Parent=item; corner(cbox,UDim.new(0,4))
-        local cStr=mkStroke(cbox,C.Border,1.5)
-        local cFill=Instance.new("Frame"); cFill.Size=UDim2.new(0,7,0,7); cFill.Position=UDim2.new(0.5,-3.5,0.5,-3.5)
-        cFill.BackgroundColor3=C.Text; cFill.BorderSizePixel=0; cFill.Visible=false; cFill.ZIndex=17; cFill.Parent=cbox; corner(cFill,UDim.new(0,2))
-        local iLbl=Instance.new("TextLabel"); iLbl.Size=UDim2.new(1,-34,1,0); iLbl.Position=UDim2.new(0,30,0,0)
-        iLbl.BackgroundTransparency=1; iLbl.Text=name; iLbl.TextColor3=C.Text; iLbl.TextSize=12
-        iLbl.Font=Enum.Font.Gotham; iLbl.TextXAlignment=Enum.TextXAlignment.Left; iLbl.ZIndex=16; iLbl.Parent=item
-        local iSel=false
-        item.MouseButton1Click:Connect(function()
-            iSel=not iSel
-            if iSel then
-                table.insert(selectedBrainrots,name); cFill.Visible=true; cbox.BackgroundColor3=C.Accent; cStr.Color=C.Accent; tw(item,{BackgroundColor3=C.AccentDeep},0.15)
-            else
-                for j,n in ipairs(selectedBrainrots) do if n==name then table.remove(selectedBrainrots,j); break end end
-                cFill.Visible=false; cbox.BackgroundColor3=C.Bg; cStr.Color=C.Border; tw(item,{BackgroundColor3=C.Surface},0.15)
-            end
-            local cnt=#selectedBrainrots
-            DropBtnTxt.Text=cnt==0 and "Select brainrots to monitor..." or (cnt.." brainrot"..(cnt>1 and "s" or "").." selected")
-            DropBtnTxt.TextColor3=cnt==0 and C.TextDim or C.Text; updateActiveList()
-        end)
-        item.MouseEnter:Connect(function() if not iSel then tw(item,{BackgroundColor3=C.SurfaceC},0.1) end end)
-        item.MouseLeave:Connect(function() if not iSel then tw(item,{BackgroundColor3=C.Surface},0.1)  end end)
+        createDropdownItem(name, i)
     end
     dropLL:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
         DropList.CanvasSize=UDim2.new(0,0,0,dropLL.AbsoluteContentSize.Y+16)
@@ -1175,7 +1095,7 @@ task.spawn(function()
     loadBrainrots(); updateActiveList(); monitorGameFolder()
     task.wait(1)
     if not speedOverride then startSpeedSync() end
-    if not jumpOverride  then startJumpSync()  end
+    if not jumpOverride then startJumpSync() end
 end)
 
 print("[ProjectCrafted] Loaded successfully!")
