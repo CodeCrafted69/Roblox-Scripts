@@ -246,34 +246,123 @@ local ContentArea=Instance.new("Frame")
 ContentArea.Size=UDim2.new(1,0,1,-CONTENT_Y); ContentArea.Position=UDim2.new(0,0,0,CONTENT_Y)
 ContentArea.BackgroundTransparency=1; ContentArea.ZIndex=10; ContentArea.Parent=Main
 
+-- SCROLLBAR (Player tab only, draggable)
 local sbTrack=Instance.new("Frame")
 sbTrack.Size=UDim2.new(0,5,1,-(10*2+CONTENT_Y)); sbTrack.Position=UDim2.new(1,-9,0,CONTENT_Y+10)
 sbTrack.BackgroundColor3=C.SurfaceC; sbTrack.BorderSizePixel=0
 sbTrack.Visible=false; sbTrack.ZIndex=20; sbTrack.Parent=Main
 corner(sbTrack,UDim.new(1,0))
 local sbThumb=Instance.new("Frame")
-sbThumb.Size=UDim2.new(1,0,0,40); sbThumb.Position=UDim2.new(0,0,0,0)
-sbThumb.BackgroundColor3=C.Accent; sbThumb.BorderSizePixel=0; sbThumb.ZIndex=21; sbThumb.Parent=sbTrack
+sbThumb.Size=UDim2.new(1,0,0,40); sbThumb.BackgroundColor3=C.Accent
+sbThumb.BorderSizePixel=0; sbThumb.ZIndex=21; sbThumb.Parent=sbTrack
 corner(sbThumb,UDim.new(1,0))
+-- TextButton over thumb so it actually captures touch/click
+local sbHit=Instance.new("TextButton")
+sbHit.Size=UDim2.new(1,16,1,16); sbHit.Position=UDim2.new(0,-8,0,-8)
+sbHit.BackgroundTransparency=1; sbHit.Text=""; sbHit.ZIndex=22; sbHit.Parent=sbThumb
 
-local function updateScrollbar(sf)
+-- SCROLL STATE (Frame-based, no ScrollingFrame)
+local scrollYs={}
+local maxScrolls={}
+local tabPageClips={}  -- Frame+ClipsDescendants, the visible window
+local tabPages={}      -- Frame inside clip, content that moves
+local tabs={}
+local activeTab=nil
+local warningAcknowledged=false
+local playerTabWarningActive=false
+local warningOverlay
+local switchTab
+
+local function updateScrollbar()
+    if activeTab~="Player" then return end
+    if playerTabWarningActive then sbTrack.Visible=false; return end
     local trackH=sbTrack.AbsoluteSize.Y
     if trackH<=0 then return end
-    local contentH=sf.CanvasSize.Y.Offset; local frameH=sf.AbsoluteSize.Y
-    if contentH<=frameH then sbTrack.Visible=false; return end
+    local maxY=maxScrolls["Player"] or 0
+    if maxY<=0 then sbTrack.Visible=false; return end
     sbTrack.Visible=true
-    local thumbH=math.max(28,trackH*math.clamp(frameH/contentH,0,1))
-    local maxScroll=contentH-frameH
-    local pct=maxScroll>0 and math.clamp(sf.CanvasPosition.Y/maxScroll,0,1) or 0
+    local clip=tabPageClips["Player"]
+    local clipH=clip and clip.AbsoluteSize.Y or 1
+    local contentH=maxY+clipH
+    local thumbH=math.max(28,trackH*(clipH/contentH))
+    local pct=maxY>0 and math.clamp((scrollYs["Player"] or 0)/maxY,0,1) or 0
     sbThumb.Size=UDim2.new(1,0,0,thumbH)
     sbThumb.Position=UDim2.new(0,0,0,pct*(trackH-thumbH))
 end
 
-local warningAcknowledged=false
-local playerTabWarningActive=false
-local tabs={}; local tabPages={}; local activeTab=nil
-local warningOverlay
-local switchTab
+local function setScrollY(key,y)
+    local page=tabPages[key]; local clip=tabPageClips[key]
+    if not page or not clip then return end
+    local maxY=maxScrolls[key] or 0
+    y=math.clamp(y,0,maxY)
+    scrollYs[key]=y
+    page.Position=UDim2.new(0,0,0,-y)
+    if key=="Player" then updateScrollbar() end
+end
+
+-- Scrollbar thumb drag
+local sbDragging=false; local sbDragStartY=0; local sbDragStartScroll=0
+sbHit.InputBegan:Connect(function(inp)
+    if inp.UserInputType==Enum.UserInputType.MouseButton1 or inp.UserInputType==Enum.UserInputType.Touch then
+        sbDragging=true; sbDragStartY=inp.Position.Y; sbDragStartScroll=scrollYs["Player"] or 0
+    end
+end)
+UserInputService.InputChanged:Connect(function(inp)
+    if not sbDragging then return end
+    if inp.UserInputType==Enum.UserInputType.MouseMovement or inp.UserInputType==Enum.UserInputType.Touch then
+        local trackH=sbTrack.AbsoluteSize.Y
+        local thumbH=sbThumb.AbsoluteSize.Y
+        local scrollRange=trackH-thumbH
+        if scrollRange<=0 then return end
+        local delta=inp.Position.Y-sbDragStartY
+        local scrollDelta=(delta/scrollRange)*(maxScrolls["Player"] or 0)
+        setScrollY("Player",sbDragStartScroll+scrollDelta)
+    end
+end)
+UserInputService.InputEnded:Connect(function(inp)
+    if inp.UserInputType==Enum.UserInputType.MouseButton1 or inp.UserInputType==Enum.UserInputType.Touch then
+        sbDragging=false
+    end
+end)
+
+-- TOUCH SCROLL (UIS global — works because children are Frames/TextButtons not ScrollingFrames)
+local touchScrolling=false; local touchScrollKey=nil; local touchStartY=0; local touchStartCanvas=0
+
+UserInputService.InputBegan:Connect(function(inp)
+    if inp.UserInputType~=Enum.UserInputType.Touch then return end
+    if sbDragging then return end
+    if playerTabWarningActive then return end
+    for key,clip in pairs(tabPageClips) do
+        if clip.Visible then
+            local ap=clip.AbsolutePosition; local as=clip.AbsoluteSize; local pos=inp.Position
+            if pos.X>=ap.X and pos.X<=ap.X+as.X and pos.Y>=ap.Y and pos.Y<=ap.Y+as.Y then
+                touchScrolling=true; touchScrollKey=key
+                touchStartY=pos.Y; touchStartCanvas=scrollYs[key] or 0
+            end
+            break
+        end
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(inp)
+    if inp.UserInputType==Enum.UserInputType.Touch then
+        if not touchScrolling or not touchScrollKey or sbDragging then return end
+        local delta=touchStartY-inp.Position.Y
+        setScrollY(touchScrollKey,touchStartCanvas+delta)
+    elseif inp.UserInputType==Enum.UserInputType.MouseWheel then
+        if playerTabWarningActive then return end
+        for key,clip in pairs(tabPageClips) do
+            if clip.Visible then
+                setScrollY(key,(scrollYs[key] or 0)-inp.Position.Z*50)
+                break
+            end
+        end
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(inp)
+    if inp.UserInputType==Enum.UserInputType.Touch then touchScrolling=false; touchScrollKey=nil end
+end)
 
 local tabDefs={
     {key="Home",label="Home",icon="👤",idx=0},
@@ -286,13 +375,10 @@ local function showPlayerWarning()
     playerTabWarningActive=true; sbTrack.Visible=false
     if warningOverlay then warningOverlay.Visible=true end
 end
-
--- FIX 3: use task.wait(0.1) instead of Heartbeat:Wait so layout fully settles
 local function hidePlayerWarning()
     playerTabWarningActive=false
     if warningOverlay then warningOverlay.Visible=false end
-    task.wait(0.1)
-    updateScrollbar(tabPages["Player"])
+    task.defer(updateScrollbar)
 end
 
 switchTab=function(key)
@@ -302,64 +388,67 @@ switchTab=function(key)
     tw(TabPill,{Position=UDim2.new(idx/TAB_COUNT,2,0,TAB_PILL_V)},0.26,Enum.EasingStyle.Back)
     for k,btn in pairs(tabs) do
         tw(btn,{TextColor3=k==key and C.Accent or C.TextDim},0.2)
-        tabPages[k].Visible=k==key
+        tabPageClips[k].Visible=k==key
     end
     if key=="Player" then
-        if not warningAcknowledged then
-            showPlayerWarning()
-        else
-            sbTrack.Visible=false
-            task.wait(0.1)
-            updateScrollbar(tabPages["Player"])
-        end
+        if not warningAcknowledged then showPlayerWarning()
+        else task.defer(updateScrollbar) end
     else
-        -- FIX 2: explicitly hide warning overlay when leaving Player tab
-        sbTrack.Visible=false
-        playerTabWarningActive=false
+        sbTrack.Visible=false; playerTabWarningActive=false
         if warningOverlay then warningOverlay.Visible=false end
     end
 end
 
+-- BUILD TAB PAGES using Frame+ClipsDescendants (NO ScrollingFrame)
 for _,def in ipairs(tabDefs) do
     local btn=Instance.new("TextButton")
     btn.Size=UDim2.new(1/TAB_COUNT,0,1,-TAB_PILL_V*2); btn.Position=UDim2.new(def.idx/TAB_COUNT,0,0,TAB_PILL_V)
     btn.BackgroundTransparency=1; btn.BorderSizePixel=0
     btn.Text=def.icon.."  "..def.label; btn.TextColor3=C.TextDim
     btn.TextSize=10; btn.Font=Enum.Font.GothamMedium; btn.ZIndex=13; btn.Parent=TabBarOuter
+
+    -- Clip frame = the visible window
+    local clip=Instance.new("Frame")
+    clip.Name=def.key.."Clip"; clip.Size=UDim2.new(1,0,1,0)
+    clip.BackgroundTransparency=1; clip.ClipsDescendants=true
+    clip.ZIndex=11; clip.Visible=false; clip.Parent=ContentArea
+    tabPageClips[def.key]=clip
+
+    -- Content frame = what actually scrolls by moving Y position
+    local page=Instance.new("Frame")
+    page.Name=def.key.."Page"; page.Size=UDim2.new(1,0,0,100)
+    page.Position=UDim2.new(0,0,0,0); page.BackgroundTransparency=1
+    page.BorderSizePixel=0; page.ZIndex=11; page.Parent=clip
+    tabPages[def.key]=page
+    scrollYs[def.key]=0; maxScrolls[def.key]=0
+
     local isPlayer=def.key=="Player"
-    local page=Instance.new("ScrollingFrame")
-    page.Name=def.key.."Page"; page.Size=UDim2.new(1,0,1,0)
-    page.BackgroundTransparency=1; page.BorderSizePixel=0; page.ScrollBarThickness=0
-    page.ScrollingEnabled=true; page.ElasticBehavior=Enum.ElasticBehavior.Never
-    page.ScrollingDirection=Enum.ScrollingDirection.Y
-    page.CanvasSize=UDim2.new(0,0,0,0); page.Visible=false; page.ZIndex=11; page.Parent=ContentArea
     local pl=Instance.new("UIListLayout")
     pl.SortOrder=Enum.SortOrder.LayoutOrder; pl.Padding=UDim.new(0,10); pl.Parent=page
     local pp=Instance.new("UIPadding")
     pp.PaddingTop=UDim.new(0,14); pp.PaddingBottom=UDim.new(0,18)
     pp.PaddingLeft=UDim.new(0,14); pp.PaddingRight=UDim.new(0,isPlayer and 18 or 14); pp.Parent=page
+
     pl:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-        page.CanvasSize=UDim2.new(0,0,0,pl.AbsoluteContentSize.Y+32)
-        if isPlayer and activeTab=="Player" and not playerTabWarningActive then updateScrollbar(page) end
+        local contentH=pl.AbsoluteContentSize.Y+32
+        page.Size=UDim2.new(1,0,0,contentH)
+        local clipH=clip.AbsoluteSize.Y>0 and clip.AbsoluteSize.Y or MAIN_H-CONTENT_Y
+        maxScrolls[def.key]=math.max(0,contentH-clipH)
+        if isPlayer and activeTab=="Player" and not playerTabWarningActive then
+            task.defer(updateScrollbar)
+        end
     end)
-    if isPlayer then
-        -- FIX 3: use task.defer so the scrollbar updates after CanvasPosition is applied
-        page:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
-            if activeTab=="Player" and not playerTabWarningActive then
-                task.defer(function() updateScrollbar(page) end)
-            end
-        end)
-    end
-    tabs[def.key]=btn; tabPages[def.key]=page
+
+    tabs[def.key]=btn
     btn.MouseButton1Click:Connect(function() switchTab(def.key) end)
 end
 
--- FIX 1: warning overlay gets corner() matching Main so rounded corners aren't covered
+-- WARNING OVERLAY
 warningOverlay=Instance.new("Frame")
 warningOverlay.Size=UDim2.new(1,0,1,-CONTENT_Y); warningOverlay.Position=UDim2.new(0,0,0,CONTENT_Y)
 warningOverlay.BackgroundColor3=Color3.fromRGB(4,8,6); warningOverlay.BackgroundTransparency=0.08
 warningOverlay.BorderSizePixel=0; warningOverlay.Visible=false; warningOverlay.ZIndex=22; warningOverlay.Parent=Main
-corner(warningOverlay,UDim.new(0,18))  -- matches Main's corner radius
+corner(warningOverlay,UDim.new(0,18))
 local blurLines=Instance.new("UIGradient")
 blurLines.Color=ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.fromRGB(4,12,7)),ColorSequenceKeypoint.new(0.5,Color3.fromRGB(8,20,12)),ColorSequenceKeypoint.new(1,Color3.fromRGB(4,12,7))})
 blurLines.Rotation=45; blurLines.Parent=warningOverlay
@@ -406,40 +495,10 @@ warnCancel.Text="✕  Go Back"; warnCancel.TextColor3=Color3.fromRGB(220,100,100
 warnCancel.TextSize=12; warnCancel.Font=Enum.Font.GothamBold; warnCancel.ZIndex=25; warnCancel.Parent=warnCard
 corner(warnCancel,UDim.new(0,9)); mkStroke(warnCancel,Color3.fromRGB(120,40,40),1.5)
 warnCancel.MouseButton1Click:Connect(function()
-    -- FIX 2: hide overlay first, THEN switch tab so switchTab's else branch keeps it hidden
-    warningOverlay.Visible=false
-    playerTabWarningActive=false
-    switchTab("Home")
+    warningOverlay.Visible=false; playerTabWarningActive=false; switchTab("Home")
 end)
 warnCancel.MouseEnter:Connect(function() tw(warnCancel,{BackgroundColor3=Color3.fromRGB(80,20,20)},0.12) end)
 warnCancel.MouseLeave:Connect(function() tw(warnCancel,{BackgroundColor3=Color3.fromRGB(50,15,15)},0.12) end)
-
--- MOBILE SCROLL
-local function setupMobileScroll(scrollFrame)
-    local scrolling=false; local startY=0; local startCanvas=0
-    local function insideBounds(pos)
-        local ap=scrollFrame.AbsolutePosition; local as=scrollFrame.AbsoluteSize
-        return pos.X>=ap.X and pos.X<=ap.X+as.X and pos.Y>=ap.Y and pos.Y<=ap.Y+as.Y
-    end
-    UserInputService.InputBegan:Connect(function(inp)
-        if inp.UserInputType~=Enum.UserInputType.Touch then return end
-        if playerTabWarningActive then return end
-        if scrollFrame.Visible and insideBounds(inp.Position) then
-            scrolling=true; startY=inp.Position.Y; startCanvas=scrollFrame.CanvasPosition.Y
-        end
-    end)
-    UserInputService.InputChanged:Connect(function(inp)
-        if not scrolling then return end
-        if inp.UserInputType~=Enum.UserInputType.Touch then return end
-        local delta=startY-inp.Position.Y
-        local maxY=math.max(0,scrollFrame.CanvasSize.Y.Offset-scrollFrame.AbsoluteSize.Y)
-        scrollFrame.CanvasPosition=Vector2.new(0,math.clamp(startCanvas+delta,0,maxY))
-    end)
-    UserInputService.InputEnded:Connect(function(inp)
-        if inp.UserInputType~=Enum.UserInputType.Touch then return end
-        scrolling=false
-    end)
-end
 
 -- HOME TAB
 local function buildHomeTab()
@@ -484,9 +543,9 @@ local function buildHomeTab()
     uTxt.BackgroundTransparency=1; uTxt.Text="UID  "..tostring(LocalPlayer.UserId)
     uTxt.TextColor3=C.TextMid; uTxt.TextSize=9; uTxt.Font=Enum.Font.GothamMedium; uTxt.ZIndex=14; uTxt.Parent=uPill
     sectionLbl(page,"SERVER",2)
-    local function makeRow(parent,labelTxt,valTxt,order)
+    local function makeRow(par,labelTxt,valTxt,order)
         local row=Instance.new("Frame"); row.Size=UDim2.new(1,0,0,36); row.BackgroundColor3=C.Surface
-        row.BorderSizePixel=0; row.LayoutOrder=order; row.ZIndex=12; row.Parent=parent
+        row.BorderSizePixel=0; row.LayoutOrder=order; row.ZIndex=12; row.Parent=par
         corner(row,UDim.new(0,9)); mkStroke(row,C.Border,1)
         local a=Instance.new("Frame"); a.Size=UDim2.new(0,3,0.55,0); a.Position=UDim2.new(0,0,0.225,0)
         a.BackgroundColor3=C.Accent; a.BorderSizePixel=0; a.ZIndex=13; a.Parent=row; corner(a,UDim.new(0,3))
@@ -503,7 +562,7 @@ local function buildHomeTab()
     local v2=makeRow(page,"Server ID","...",4)
     sectionLbl(page,"GAME",5)
     local v3=makeRow(page,"Game Name","...",6)
-    local v4=makeRow(page,"Place ID",tostring(game.PlaceId),7)
+    makeRow(page,"Place ID",tostring(game.PlaceId),7)
     task.spawn(function()
         local ok1,sid=pcall(function() return game.JobId end)
         v2.Text=(ok1 and sid and sid~="") and (sid:sub(1,16).."...") or "N/A"
@@ -546,7 +605,7 @@ local flyEnabled=false; local flyBodyVel=nil; local flyBodyGyro=nil; local flyCo
 local flyUp=false; local flyDown=false; local FLY_SPEED=60
 local speedOverride=false; local jumpOverride=false; local sliderSpeed=16; local sliderJump=50
 local teleportOnSpawn=false; local godmodeOn=false; local lavaTouchConns={}; local disabledParts={}
-local flingEnabled=false; local flingBAV=nil; local flingTouchConn=nil
+local flingEnabled=false; local flingBAV=nil; local flingTouchConn=nil; local flingDebounce={}
 local speedSyncConn=nil; local jumpSyncConn=nil
 
 local function getChar() return LocalPlayer.Character end
@@ -639,16 +698,11 @@ local function disableFly()
     local h=getHum(); if h then h.PlatformStand=false end
 end
 
--- FIX 4: fling uses safe spin speed (20 rad/s) and per-player debounce
-local flingDebounce={}
 local function enableFling()
     local hrp=getHRP(); if not hrp then return end
     if flingBAV then flingBAV:Destroy() end
     flingBAV=Instance.new("BodyAngularVelocity")
-    -- 20 rad/s (~3 full rotations/sec) looks insane but won't break physics
-    flingBAV.AngularVelocity=Vector3.new(0,20,0)
-    flingBAV.MaxTorque=Vector3.new(0,4e4,0)
-    flingBAV.Parent=hrp
+    flingBAV.AngularVelocity=Vector3.new(0,20,0); flingBAV.MaxTorque=Vector3.new(0,4e4,0); flingBAV.Parent=hrp
     local char=getChar()
     if flingTouchConn then flingTouchConn:Disconnect() end
     flingDebounce={}
@@ -661,16 +715,12 @@ local function enableFling()
             local isP=false
             for _,p in pairs(Players:GetPlayers()) do if p.Character==oc then isP=true; break end end
             if not isP then return end
-            -- debounce per player to avoid repeated rapid flings
             if flingDebounce[oc] then return end
             flingDebounce[oc]=true
-            local myHRP=getHRP()
-            local dir=myHRP and (ohrp.Position-myHRP.Position) or Vector3.new(0,1,0)
+            local myHRP=getHRP(); local dir=myHRP and (ohrp.Position-myHRP.Position) or Vector3.new(0,1,0)
             if dir.Magnitude>0.01 then dir=dir.Unit else dir=Vector3.new(0,1,0) end
-            local bv=Instance.new("BodyVelocity")
-            bv.Velocity=dir*400+Vector3.new(0,600,0)
-            bv.MaxForce=Vector3.new(math.huge,math.huge,math.huge)
-            bv.Parent=ohrp
+            local bv=Instance.new("BodyVelocity"); bv.Velocity=dir*400+Vector3.new(0,600,0)
+            bv.MaxForce=Vector3.new(math.huge,math.huge,math.huge); bv.Parent=ohrp
             game:GetService("Debris"):AddItem(bv,0.2)
             task.delay(1.5,function() flingDebounce[oc]=nil end)
         end)
@@ -714,7 +764,6 @@ makeMobileBtn("▼",62,function() flyDown=true end,function() flyDown=false end)
 
 local function buildPlayerTab()
     local page=tabPages["Player"]
-    setupMobileScroll(page)
     sectionLbl(page,"MOVEMENT",1)
     local _,spTr,spKn,spHit,spStr=toggleRow(page,"Custom Speed","Off: mirrors game HUD  |  On: slider controls speed",2)
     spHit.MouseButton1Click:Connect(function()
@@ -779,21 +828,18 @@ local function processPopupQ()
     tw(PopupFrame,{Position=UDim2.new(0.5,-165,0,-100)},0.32,Enum.EasingStyle.Quart,Enum.EasingDirection.In)
     task.wait(0.35); PopupFrame.Visible=false; popShowing=false; processPopupQ()
 end
-
 local function teleportToModel(model)
     if not model or not model.Parent then return end
     local hrp=getHRP(); if not hrp then return end
     local ok,cf=pcall(function() return model:GetPivot() end)
     if ok and cf then hrp.CFrame=cf*CFrame.new(0,5,0) end
 end
-
 local function triggerAlert(modelName,model)
     if #selectedBrainrots==0 then return end
     applyHighlight(model)
     if teleportOnSpawn then task.spawn(function() task.wait(0.15); teleportToModel(model) end) end
     table.insert(popupQ,{name=modelName,model=model}); task.spawn(processPopupQ)
 end
-
 local function deepSearch(parent,results)
     results=results or {}
     for _,child in pairs(parent:GetChildren()) do
@@ -802,7 +848,6 @@ local function deepSearch(parent,results)
     end
     return results
 end
-
 local function monitorGameFolder()
     for _,c in pairs(monConns) do c:Disconnect() end; monConns={}
     local gf=workspace:FindFirstChild("GameFolder"); if not gf then return end
@@ -908,7 +953,6 @@ local function buildMiscTab()
     local emLbl=Instance.new("TextLabel"); emLbl.Size=UDim2.new(1,0,0,28)
     emLbl.BackgroundTransparency=1; emLbl.Text="No brainrots selected..."
     emLbl.TextColor3=C.TextDim; emLbl.TextSize=11; emLbl.Font=Enum.Font.GothamMedium; emLbl.ZIndex=13; emLbl.Parent=aList
-
     local function filterDD(q)
         q=q:lower()
         for _,item in pairs(dropdownItems) do
@@ -918,7 +962,6 @@ local function buildMiscTab()
         DropList.CanvasSize=UDim2.new(0,0,0,dropLL.AbsoluteContentSize.Y+16)
     end
     sBox:GetPropertyChangedSignal("Text"):Connect(function() filterDD(sBox.Text) end)
-
     local function loadBrainrots()
         local folder=ReplicatedStorage:FindFirstChild("Brainrots")
         if not folder then warn("[ProjectCrafted] ReplicatedStorage.Brainrots not found"); return end
@@ -933,7 +976,6 @@ local function buildMiscTab()
             if dropOpen then DropPanel.Size=UDim2.new(1,0,0,math.min(dropLL.AbsoluteContentSize.Y+16+37,210)) end
         end)
     end
-
     db.MouseButton1Click:Connect(function()
         dropOpen=not dropOpen
         if dropOpen then
@@ -945,7 +987,6 @@ local function buildMiscTab()
             tw(DropArrow,{Rotation=0},0.22); dropBtnStr.Color=C.Border; task.delay(0.23,function() DropPanel.Visible=false end)
         end
     end)
-
     PopupFrame=Instance.new("Frame"); PopupFrame.Size=UDim2.new(0,330,0,62)
     PopupFrame.Position=UDim2.new(0.5,-165,0,-100); PopupFrame.BackgroundColor3=C.Surface
     PopupFrame.BorderSizePixel=0; PopupFrame.Visible=false; PopupFrame.ZIndex=200; PopupFrame.Parent=ScreenGui
@@ -961,7 +1002,6 @@ local function buildMiscTab()
     PopBot=Instance.new("TextLabel"); PopBot.Size=UDim2.new(1,-58,0,22); PopBot.Position=UDim2.new(0,54,0,32)
     PopBot.BackgroundTransparency=1; PopBot.Text=""; PopBot.TextColor3=C.Text
     PopBot.TextSize=13; PopBot.Font=Enum.Font.GothamBold; PopBot.TextXAlignment=Enum.TextXAlignment.Left; PopBot.ZIndex=201; PopBot.Parent=PopupFrame
-
     task.spawn(function() loadBrainrots(); monitorGameFolder() end)
 end
 
@@ -1000,15 +1040,11 @@ UserInputService.InputChanged:Connect(function(inp)
     end
 end)
 
-buildHomeTab()
-buildVisualTab()
-buildPlayerTab()
-buildMiscTab()
+buildHomeTab(); buildVisualTab(); buildPlayerTab(); buildMiscTab()
 switchTab("Home")
 task.spawn(function()
     task.wait(1)
     if not speedOverride then startSpeedSync() end
     if not jumpOverride then startJumpSync() end
 end)
-
 print("[ProjectCrafted] Loaded successfully!")
