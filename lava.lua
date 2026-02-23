@@ -177,9 +177,7 @@ local function makeActionBtn(parent,label,bgColor,order,onClick)
     btn.MouseLeave:Connect(function() tw(btn,{BackgroundColor3=bgColor},0.12) end)
 end
 
--- ========================
 -- MAIN FRAME
--- ========================
 local TogglePill=Instance.new("TextButton")
 TogglePill.Size=UDim2.new(0,48,0,48); TogglePill.Position=UDim2.new(0,16,0.5,-24)
 TogglePill.BackgroundColor3=C.Accent; TogglePill.BorderSizePixel=0
@@ -288,10 +286,13 @@ local function showPlayerWarning()
     playerTabWarningActive=true; sbTrack.Visible=false
     if warningOverlay then warningOverlay.Visible=true end
 end
+
+-- FIX 3: use task.wait(0.1) instead of Heartbeat:Wait so layout fully settles
 local function hidePlayerWarning()
     playerTabWarningActive=false
     if warningOverlay then warningOverlay.Visible=false end
-    RunService.Heartbeat:Wait(); updateScrollbar(tabPages["Player"])
+    task.wait(0.1)
+    updateScrollbar(tabPages["Player"])
 end
 
 switchTab=function(key)
@@ -304,10 +305,18 @@ switchTab=function(key)
         tabPages[k].Visible=k==key
     end
     if key=="Player" then
-        if not warningAcknowledged then showPlayerWarning()
-        else sbTrack.Visible=false; RunService.Heartbeat:Wait(); updateScrollbar(tabPages["Player"]) end
+        if not warningAcknowledged then
+            showPlayerWarning()
+        else
+            sbTrack.Visible=false
+            task.wait(0.1)
+            updateScrollbar(tabPages["Player"])
+        end
     else
-        sbTrack.Visible=false; playerTabWarningActive=false
+        -- FIX 2: explicitly hide warning overlay when leaving Player tab
+        sbTrack.Visible=false
+        playerTabWarningActive=false
+        if warningOverlay then warningOverlay.Visible=false end
     end
 end
 
@@ -334,19 +343,23 @@ for _,def in ipairs(tabDefs) do
         if isPlayer and activeTab=="Player" and not playerTabWarningActive then updateScrollbar(page) end
     end)
     if isPlayer then
+        -- FIX 3: use task.defer so the scrollbar updates after CanvasPosition is applied
         page:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
-            if activeTab=="Player" and not playerTabWarningActive then updateScrollbar(page) end
+            if activeTab=="Player" and not playerTabWarningActive then
+                task.defer(function() updateScrollbar(page) end)
+            end
         end)
     end
     tabs[def.key]=btn; tabPages[def.key]=page
     btn.MouseButton1Click:Connect(function() switchTab(def.key) end)
 end
 
--- WARNING OVERLAY
+-- FIX 1: warning overlay gets corner() matching Main so rounded corners aren't covered
 warningOverlay=Instance.new("Frame")
 warningOverlay.Size=UDim2.new(1,0,1,-CONTENT_Y); warningOverlay.Position=UDim2.new(0,0,0,CONTENT_Y)
 warningOverlay.BackgroundColor3=Color3.fromRGB(4,8,6); warningOverlay.BackgroundTransparency=0.08
 warningOverlay.BorderSizePixel=0; warningOverlay.Visible=false; warningOverlay.ZIndex=22; warningOverlay.Parent=Main
+corner(warningOverlay,UDim.new(0,18))  -- matches Main's corner radius
 local blurLines=Instance.new("UIGradient")
 blurLines.Color=ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.fromRGB(4,12,7)),ColorSequenceKeypoint.new(0.5,Color3.fromRGB(8,20,12)),ColorSequenceKeypoint.new(1,Color3.fromRGB(4,12,7))})
 blurLines.Rotation=45; blurLines.Parent=warningOverlay
@@ -392,7 +405,12 @@ warnCancel.BackgroundColor3=Color3.fromRGB(50,15,15); warnCancel.BorderSizePixel
 warnCancel.Text="✕  Go Back"; warnCancel.TextColor3=Color3.fromRGB(220,100,100)
 warnCancel.TextSize=12; warnCancel.Font=Enum.Font.GothamBold; warnCancel.ZIndex=25; warnCancel.Parent=warnCard
 corner(warnCancel,UDim.new(0,9)); mkStroke(warnCancel,Color3.fromRGB(120,40,40),1.5)
-warnCancel.MouseButton1Click:Connect(function() switchTab("Home") end)
+warnCancel.MouseButton1Click:Connect(function()
+    -- FIX 2: hide overlay first, THEN switch tab so switchTab's else branch keeps it hidden
+    warningOverlay.Visible=false
+    playerTabWarningActive=false
+    switchTab("Home")
+end)
 warnCancel.MouseEnter:Connect(function() tw(warnCancel,{BackgroundColor3=Color3.fromRGB(80,20,20)},0.12) end)
 warnCancel.MouseLeave:Connect(function() tw(warnCancel,{BackgroundColor3=Color3.fromRGB(50,15,15)},0.12) end)
 
@@ -423,9 +441,7 @@ local function setupMobileScroll(scrollFrame)
     end)
 end
 
--- ========================
--- HOME TAB - own function to avoid local limit
--- ========================
+-- HOME TAB
 local function buildHomeTab()
     local page=tabPages["Home"]
     local profileCard=Instance.new("Frame"); profileCard.Size=UDim2.new(1,0,0,110)
@@ -468,56 +484,26 @@ local function buildHomeTab()
     uTxt.BackgroundTransparency=1; uTxt.Text="UID  "..tostring(LocalPlayer.UserId)
     uTxt.TextColor3=C.TextMid; uTxt.TextSize=9; uTxt.Font=Enum.Font.GothamMedium; uTxt.ZIndex=14; uTxt.Parent=uPill
     sectionLbl(page,"SERVER",2)
-    local _,pcVal=Instance.new("Frame"),nil
-    local row1=Instance.new("Frame"); row1.Size=UDim2.new(1,0,0,36); row1.BackgroundColor3=C.Surface
-    row1.BorderSizePixel=0; row1.LayoutOrder=3; row1.ZIndex=12; row1.Parent=page
-    corner(row1,UDim.new(0,9)); mkStroke(row1,C.Border,1)
-    local a1=Instance.new("Frame"); a1.Size=UDim2.new(0,3,0.55,0); a1.Position=UDim2.new(0,0,0.225,0)
-    a1.BackgroundColor3=C.Accent; a1.BorderSizePixel=0; a1.ZIndex=13; a1.Parent=row1; corner(a1,UDim.new(0,3))
-    local l1=Instance.new("TextLabel"); l1.Size=UDim2.new(0.5,-8,1,0); l1.Position=UDim2.new(0,14,0,0)
-    l1.BackgroundTransparency=1; l1.Text="Players in Server"; l1.TextColor3=C.TextMid; l1.TextSize=11
-    l1.Font=Enum.Font.GothamMedium; l1.TextXAlignment=Enum.TextXAlignment.Left; l1.ZIndex=13; l1.Parent=row1
-    local v1=Instance.new("TextLabel"); v1.Size=UDim2.new(0.5,-14,1,0); v1.Position=UDim2.new(0.5,0,0,0)
-    v1.BackgroundTransparency=1; v1.Text="..."; v1.TextColor3=C.Text; v1.TextSize=11; v1.Font=Enum.Font.GothamBold
-    v1.TextXAlignment=Enum.TextXAlignment.Right; v1.ZIndex=13; v1.Parent=row1
-    local vp1=Instance.new("UIPadding"); vp1.PaddingRight=UDim.new(0,12); vp1.Parent=v1
-    local row2=Instance.new("Frame"); row2.Size=UDim2.new(1,0,0,36); row2.BackgroundColor3=C.Surface
-    row2.BorderSizePixel=0; row2.LayoutOrder=4; row2.ZIndex=12; row2.Parent=page
-    corner(row2,UDim.new(0,9)); mkStroke(row2,C.Border,1)
-    local a2=Instance.new("Frame"); a2.Size=UDim2.new(0,3,0.55,0); a2.Position=UDim2.new(0,0,0.225,0)
-    a2.BackgroundColor3=C.Accent; a2.BorderSizePixel=0; a2.ZIndex=13; a2.Parent=row2; corner(a2,UDim.new(0,3))
-    local l2=Instance.new("TextLabel"); l2.Size=UDim2.new(0.5,-8,1,0); l2.Position=UDim2.new(0,14,0,0)
-    l2.BackgroundTransparency=1; l2.Text="Server ID"; l2.TextColor3=C.TextMid; l2.TextSize=11
-    l2.Font=Enum.Font.GothamMedium; l2.TextXAlignment=Enum.TextXAlignment.Left; l2.ZIndex=13; l2.Parent=row2
-    local v2=Instance.new("TextLabel"); v2.Size=UDim2.new(0.5,-14,1,0); v2.Position=UDim2.new(0.5,0,0,0)
-    v2.BackgroundTransparency=1; v2.Text="..."; v2.TextColor3=C.Text; v2.TextSize=11; v2.Font=Enum.Font.GothamBold
-    v2.TextXAlignment=Enum.TextXAlignment.Right; v2.ZIndex=13; v2.Parent=row2
-    local vp2=Instance.new("UIPadding"); vp2.PaddingRight=UDim.new(0,12); vp2.Parent=v2
+    local function makeRow(parent,labelTxt,valTxt,order)
+        local row=Instance.new("Frame"); row.Size=UDim2.new(1,0,0,36); row.BackgroundColor3=C.Surface
+        row.BorderSizePixel=0; row.LayoutOrder=order; row.ZIndex=12; row.Parent=parent
+        corner(row,UDim.new(0,9)); mkStroke(row,C.Border,1)
+        local a=Instance.new("Frame"); a.Size=UDim2.new(0,3,0.55,0); a.Position=UDim2.new(0,0,0.225,0)
+        a.BackgroundColor3=C.Accent; a.BorderSizePixel=0; a.ZIndex=13; a.Parent=row; corner(a,UDim.new(0,3))
+        local l=Instance.new("TextLabel"); l.Size=UDim2.new(0.5,-8,1,0); l.Position=UDim2.new(0,14,0,0)
+        l.BackgroundTransparency=1; l.Text=labelTxt; l.TextColor3=C.TextMid; l.TextSize=11
+        l.Font=Enum.Font.GothamMedium; l.TextXAlignment=Enum.TextXAlignment.Left; l.ZIndex=13; l.Parent=row
+        local v=Instance.new("TextLabel"); v.Size=UDim2.new(0.5,-14,1,0); v.Position=UDim2.new(0.5,0,0,0)
+        v.BackgroundTransparency=1; v.Text=valTxt; v.TextColor3=C.Text; v.TextSize=11; v.Font=Enum.Font.GothamBold
+        v.TextXAlignment=Enum.TextXAlignment.Right; v.TextTruncate=Enum.TextTruncate.AtEnd; v.ZIndex=13; v.Parent=row
+        local vp=Instance.new("UIPadding"); vp.PaddingRight=UDim.new(0,12); vp.Parent=v
+        return v
+    end
+    local v1=makeRow(page,"Players in Server","...",3)
+    local v2=makeRow(page,"Server ID","...",4)
     sectionLbl(page,"GAME",5)
-    local row3=Instance.new("Frame"); row3.Size=UDim2.new(1,0,0,36); row3.BackgroundColor3=C.Surface
-    row3.BorderSizePixel=0; row3.LayoutOrder=6; row3.ZIndex=12; row3.Parent=page
-    corner(row3,UDim.new(0,9)); mkStroke(row3,C.Border,1)
-    local a3=Instance.new("Frame"); a3.Size=UDim2.new(0,3,0.55,0); a3.Position=UDim2.new(0,0,0.225,0)
-    a3.BackgroundColor3=C.Accent; a3.BorderSizePixel=0; a3.ZIndex=13; a3.Parent=row3; corner(a3,UDim.new(0,3))
-    local l3=Instance.new("TextLabel"); l3.Size=UDim2.new(0.5,-8,1,0); l3.Position=UDim2.new(0,14,0,0)
-    l3.BackgroundTransparency=1; l3.Text="Game Name"; l3.TextColor3=C.TextMid; l3.TextSize=11
-    l3.Font=Enum.Font.GothamMedium; l3.TextXAlignment=Enum.TextXAlignment.Left; l3.ZIndex=13; l3.Parent=row3
-    local v3=Instance.new("TextLabel"); v3.Size=UDim2.new(0.5,-14,1,0); v3.Position=UDim2.new(0.5,0,0,0)
-    v3.BackgroundTransparency=1; v3.Text="..."; v3.TextColor3=C.Text; v3.TextSize=11; v3.Font=Enum.Font.GothamBold
-    v3.TextXAlignment=Enum.TextXAlignment.Right; v3.ZIndex=13; v3.Parent=row3
-    local vp3=Instance.new("UIPadding"); vp3.PaddingRight=UDim.new(0,12); vp3.Parent=v3
-    local row4=Instance.new("Frame"); row4.Size=UDim2.new(1,0,0,36); row4.BackgroundColor3=C.Surface
-    row4.BorderSizePixel=0; row4.LayoutOrder=7; row4.ZIndex=12; row4.Parent=page
-    corner(row4,UDim.new(0,9)); mkStroke(row4,C.Border,1)
-    local a4=Instance.new("Frame"); a4.Size=UDim2.new(0,3,0.55,0); a4.Position=UDim2.new(0,0,0.225,0)
-    a4.BackgroundColor3=C.Accent; a4.BorderSizePixel=0; a4.ZIndex=13; a4.Parent=row4; corner(a4,UDim.new(0,3))
-    local l4=Instance.new("TextLabel"); l4.Size=UDim2.new(0.5,-8,1,0); l4.Position=UDim2.new(0,14,0,0)
-    l4.BackgroundTransparency=1; l4.Text="Place ID"; l4.TextColor3=C.TextMid; l4.TextSize=11
-    l4.Font=Enum.Font.GothamMedium; l4.TextXAlignment=Enum.TextXAlignment.Left; l4.ZIndex=13; l4.Parent=row4
-    local v4=Instance.new("TextLabel"); v4.Size=UDim2.new(0.5,-14,1,0); v4.Position=UDim2.new(0.5,0,0,0)
-    v4.BackgroundTransparency=1; v4.Text=tostring(game.PlaceId); v4.TextColor3=C.Text; v4.TextSize=11; v4.Font=Enum.Font.GothamBold
-    v4.TextXAlignment=Enum.TextXAlignment.Right; v4.ZIndex=13; v4.Parent=row4
-    local vp4=Instance.new("UIPadding"); vp4.PaddingRight=UDim.new(0,12); vp4.Parent=v4
+    local v3=makeRow(page,"Game Name","...",6)
+    local v4=makeRow(page,"Place ID",tostring(game.PlaceId),7)
     task.spawn(function()
         local ok1,sid=pcall(function() return game.JobId end)
         v2.Text=(ok1 and sid and sid~="") and (sid:sub(1,16).."...") or "N/A"
@@ -530,11 +516,8 @@ local function buildHomeTab()
     end)
 end
 
--- ========================
 -- VISUAL TAB
--- ========================
-local highlightOn=false
-local activeHighlights={}
+local highlightOn=false; local activeHighlights={}
 local function applyHighlight(model)
     if not highlightOn or not model or not model.Parent then return end
     local ex=model:FindFirstChildOfClass("Highlight"); if ex then ex:Destroy() end
@@ -558,9 +541,7 @@ local function buildVisualTab()
     end)
 end
 
--- ========================
--- PLAYER TAB
--- ========================
+-- PLAYER TAB STATE
 local flyEnabled=false; local flyBodyVel=nil; local flyBodyGyro=nil; local flyConn=nil
 local flyUp=false; local flyDown=false; local FLY_SPEED=60
 local speedOverride=false; local jumpOverride=false; local sliderSpeed=16; local sliderJump=50
@@ -611,8 +592,7 @@ end
 local function scanLavas()
     local gf=workspace:FindFirstChild("GameFolder"); if not gf then return end
     local lavas=gf:FindFirstChild("Lavas"); if not lavas then return end
-    for _,desc in ipairs(lavas:GetDescendants()) do disableLavaPart(desc) end
-    disableLavaPart(lavas)
+    for _,desc in ipairs(lavas:GetDescendants()) do disableLavaPart(desc) end; disableLavaPart(lavas)
     table.insert(lavaTouchConns,lavas.DescendantAdded:Connect(function(d) if godmodeOn then disableLavaPart(d) end end))
 end
 local function enableGodmode() godmodeOn=true; disabledParts={}; scanLavas() end
@@ -621,6 +601,7 @@ local function disableGodmode()
     for _,c in ipairs(lavaTouchConns) do c:Disconnect() end; lavaTouchConns={}
     for _,e in ipairs(disabledParts) do if e.part and e.part.Parent then e.part.CanTouch=e.was end end; disabledParts={}
 end
+
 local function enableFly()
     local hrp=getHRP(); local hum=getHum(); if not hrp or not hum then return end
     if flyBodyVel then flyBodyVel:Destroy() end; if flyBodyGyro then flyBodyGyro:Destroy() end
@@ -657,13 +638,20 @@ local function disableFly()
     if flyBodyGyro then flyBodyGyro:Destroy(); flyBodyGyro=nil end
     local h=getHum(); if h then h.PlatformStand=false end
 end
+
+-- FIX 4: fling uses safe spin speed (20 rad/s) and per-player debounce
+local flingDebounce={}
 local function enableFling()
     local hrp=getHRP(); if not hrp then return end
     if flingBAV then flingBAV:Destroy() end
-    flingBAV=Instance.new("BodyAngularVelocity"); flingBAV.AngularVelocity=Vector3.new(0,9999,0)
-    flingBAV.MaxTorque=Vector3.new(0,math.huge,0); flingBAV.Parent=hrp
+    flingBAV=Instance.new("BodyAngularVelocity")
+    -- 20 rad/s (~3 full rotations/sec) looks insane but won't break physics
+    flingBAV.AngularVelocity=Vector3.new(0,20,0)
+    flingBAV.MaxTorque=Vector3.new(0,4e4,0)
+    flingBAV.Parent=hrp
     local char=getChar()
     if flingTouchConn then flingTouchConn:Disconnect() end
+    flingDebounce={}
     if char then
         flingTouchConn=char.Touched:Connect(function(part)
             if not flingEnabled then return end
@@ -673,22 +661,29 @@ local function enableFling()
             local isP=false
             for _,p in pairs(Players:GetPlayers()) do if p.Character==oc then isP=true; break end end
             if not isP then return end
-            local myHRP=getHRP(); local dir=myHRP and (ohrp.Position-myHRP.Position) or Vector3.new(0,1,0)
-            if dir.Magnitude>0 then dir=dir.Unit end
-            local bv=Instance.new("BodyVelocity"); bv.Velocity=dir*500+Vector3.new(0,700,0)
-            bv.MaxForce=Vector3.new(math.huge,math.huge,math.huge); bv.Parent=ohrp
-            game:GetService("Debris"):AddItem(bv,0.18)
+            -- debounce per player to avoid repeated rapid flings
+            if flingDebounce[oc] then return end
+            flingDebounce[oc]=true
+            local myHRP=getHRP()
+            local dir=myHRP and (ohrp.Position-myHRP.Position) or Vector3.new(0,1,0)
+            if dir.Magnitude>0.01 then dir=dir.Unit else dir=Vector3.new(0,1,0) end
+            local bv=Instance.new("BodyVelocity")
+            bv.Velocity=dir*400+Vector3.new(0,600,0)
+            bv.MaxForce=Vector3.new(math.huge,math.huge,math.huge)
+            bv.Parent=ohrp
+            game:GetService("Debris"):AddItem(bv,0.2)
+            task.delay(1.5,function() flingDebounce[oc]=nil end)
         end)
     end
 end
 local function disableFling()
-    flingEnabled=false
+    flingEnabled=false; flingDebounce={}
     if flingBAV then flingBAV:Destroy(); flingBAV=nil end
     if flingTouchConn then flingTouchConn:Disconnect(); flingTouchConn=nil end
 end
 
 LocalPlayer.CharacterAdded:Connect(function()
-    task.wait(0.5)
+    task.wait(0.5); flingDebounce={}
     if speedOverride then local h=getHum(); if h then h.WalkSpeed=sliderSpeed end else startSpeedSync() end
     if jumpOverride then local h=getHum(); if h then h.JumpPower=sliderJump end else startJumpSync() end
     if flyEnabled then task.wait(0.2); enableFly() end
@@ -769,56 +764,9 @@ local function buildPlayerTab()
     end)
 end
 
--- ========================
 -- MISC TAB
--- ========================
 local selectedBrainrots={}; local allBrainrots={}; local dropdownItems={}; local dropOpen=false
 local DropBtnTxt; local dropBtnStr; local DropArrow; local DropPanel; local DropList; local dropLL
-
-local function updateActiveList(ActiveList,activeLL,EmptyLbl)
-    for _,ch in pairs(ActiveList:GetChildren()) do if ch:IsA("Frame") then ch:Destroy() end end
-    EmptyLbl.Visible=#selectedBrainrots==0
-    for i,name in ipairs(selectedBrainrots) do
-        local row=Instance.new("Frame"); row.Size=UDim2.new(1,0,0,28); row.BackgroundColor3=C.SurfaceC
-        row.BorderSizePixel=0; row.LayoutOrder=i; row.ZIndex=13; row.Parent=ActiveList; corner(row,UDim.new(0,7))
-        local dot=Instance.new("Frame"); dot.Size=UDim2.new(0,7,0,7); dot.Position=UDim2.new(0,9,0.5,-3.5)
-        dot.BackgroundColor3=C.Accent; dot.BorderSizePixel=0; dot.ZIndex=14; dot.Parent=row; corner(dot,UDim.new(1,0))
-        local lbl=Instance.new("TextLabel"); lbl.Size=UDim2.new(1,-26,1,0); lbl.Position=UDim2.new(0,22,0,0)
-        lbl.BackgroundTransparency=1; lbl.Text=name; lbl.TextColor3=C.Text; lbl.TextSize=11
-        lbl.Font=Enum.Font.Gotham; lbl.TextXAlignment=Enum.TextXAlignment.Left; lbl.ZIndex=14; lbl.Parent=row
-    end
-    ActiveList.CanvasSize=UDim2.new(0,0,0,activeLL.AbsoluteContentSize.Y+16)
-end
-
-local function createDropdownItem(name,i,ActiveList,activeLL,EmptyLbl)
-    local item=Instance.new("TextButton"); item.Size=UDim2.new(1,0,0,32)
-    item.BackgroundColor3=C.Surface; item.BorderSizePixel=0; item.Text=""; item.LayoutOrder=i; item.ZIndex=15; item.Parent=DropList
-    table.insert(dropdownItems,item); corner(item,UDim.new(0,7))
-    local cbox=Instance.new("Frame"); cbox.Size=UDim2.new(0,15,0,15); cbox.Position=UDim2.new(0,9,0.5,-7.5)
-    cbox.BackgroundColor3=C.Bg; cbox.BorderSizePixel=0; cbox.ZIndex=16; cbox.Parent=item; corner(cbox,UDim.new(0,4))
-    local cStr=mkStroke(cbox,C.Border,1.5)
-    local cFill=Instance.new("Frame"); cFill.Size=UDim2.new(0,7,0,7); cFill.Position=UDim2.new(0.5,-3.5,0.5,-3.5)
-    cFill.BackgroundColor3=C.Text; cFill.BorderSizePixel=0; cFill.Visible=false; cFill.ZIndex=17; cFill.Parent=cbox; corner(cFill,UDim.new(0,2))
-    local iLbl=Instance.new("TextLabel"); iLbl.Size=UDim2.new(1,-34,1,0); iLbl.Position=UDim2.new(0,30,0,0)
-    iLbl.BackgroundTransparency=1; iLbl.Text=name; iLbl.TextColor3=C.Text; iLbl.TextSize=12
-    iLbl.Font=Enum.Font.Gotham; iLbl.TextXAlignment=Enum.TextXAlignment.Left; iLbl.ZIndex=16; iLbl.Parent=item
-    local iSel=false
-    item.MouseButton1Click:Connect(function()
-        iSel=not iSel
-        if iSel then table.insert(selectedBrainrots,name); cFill.Visible=true; cbox.BackgroundColor3=C.Accent; cStr.Color=C.Accent; tw(item,{BackgroundColor3=C.AccentDeep},0.15)
-        else
-            for j,n in ipairs(selectedBrainrots) do if n==name then table.remove(selectedBrainrots,j); break end end
-            cFill.Visible=false; cbox.BackgroundColor3=C.Bg; cStr.Color=C.Border; tw(item,{BackgroundColor3=C.Surface},0.15)
-        end
-        local cnt=#selectedBrainrots
-        DropBtnTxt.Text=cnt==0 and "Select brainrots to monitor..." or (cnt.." brainrot"..(cnt>1 and "s" or "").." selected")
-        DropBtnTxt.TextColor3=cnt==0 and C.TextDim or C.Text
-        updateActiveList(ActiveList,activeLL,EmptyLbl)
-    end)
-    item.MouseEnter:Connect(function() if not iSel then tw(item,{BackgroundColor3=C.SurfaceC},0.1) end end)
-    item.MouseLeave:Connect(function() if not iSel then tw(item,{BackgroundColor3=C.Surface},0.1) end end)
-end
-
 local popupQ={}; local popShowing=false; local monConns={}
 local PopupFrame; local PopBot
 
@@ -867,6 +815,46 @@ local function monitorGameFolder()
     end
     table.insert(monConns,bf.ChildAdded:Connect(function(child) if child:IsA("Folder") then watchFolder(child) end end))
     for _,ch in pairs(bf:GetChildren()) do if ch:IsA("Folder") then watchFolder(ch) end end
+end
+
+local function createDropdownItem(name,i,aList,aLL,emLbl)
+    local item=Instance.new("TextButton"); item.Size=UDim2.new(1,0,0,32)
+    item.BackgroundColor3=C.Surface; item.BorderSizePixel=0; item.Text=""; item.LayoutOrder=i; item.ZIndex=15; item.Parent=DropList
+    table.insert(dropdownItems,item); corner(item,UDim.new(0,7))
+    local cbox=Instance.new("Frame"); cbox.Size=UDim2.new(0,15,0,15); cbox.Position=UDim2.new(0,9,0.5,-7.5)
+    cbox.BackgroundColor3=C.Bg; cbox.BorderSizePixel=0; cbox.ZIndex=16; cbox.Parent=item; corner(cbox,UDim.new(0,4))
+    local cStr=mkStroke(cbox,C.Border,1.5)
+    local cFill=Instance.new("Frame"); cFill.Size=UDim2.new(0,7,0,7); cFill.Position=UDim2.new(0.5,-3.5,0.5,-3.5)
+    cFill.BackgroundColor3=C.Text; cFill.BorderSizePixel=0; cFill.Visible=false; cFill.ZIndex=17; cFill.Parent=cbox; corner(cFill,UDim.new(0,2))
+    local iLbl=Instance.new("TextLabel"); iLbl.Size=UDim2.new(1,-34,1,0); iLbl.Position=UDim2.new(0,30,0,0)
+    iLbl.BackgroundTransparency=1; iLbl.Text=name; iLbl.TextColor3=C.Text; iLbl.TextSize=12
+    iLbl.Font=Enum.Font.Gotham; iLbl.TextXAlignment=Enum.TextXAlignment.Left; iLbl.ZIndex=16; iLbl.Parent=item
+    local iSel=false
+    item.MouseButton1Click:Connect(function()
+        iSel=not iSel
+        if iSel then table.insert(selectedBrainrots,name); cFill.Visible=true; cbox.BackgroundColor3=C.Accent; cStr.Color=C.Accent; tw(item,{BackgroundColor3=C.AccentDeep},0.15)
+        else
+            for j,n in ipairs(selectedBrainrots) do if n==name then table.remove(selectedBrainrots,j); break end end
+            cFill.Visible=false; cbox.BackgroundColor3=C.Bg; cStr.Color=C.Border; tw(item,{BackgroundColor3=C.Surface},0.15)
+        end
+        local cnt=#selectedBrainrots
+        DropBtnTxt.Text=cnt==0 and "Select brainrots to monitor..." or (cnt.." brainrot"..(cnt>1 and "s" or "").." selected")
+        DropBtnTxt.TextColor3=cnt==0 and C.TextDim or C.Text
+        for _,ch in pairs(aList:GetChildren()) do if ch:IsA("Frame") then ch:Destroy() end end
+        emLbl.Visible=#selectedBrainrots==0
+        for si,sname in ipairs(selectedBrainrots) do
+            local row=Instance.new("Frame"); row.Size=UDim2.new(1,0,0,28); row.BackgroundColor3=C.SurfaceC
+            row.BorderSizePixel=0; row.LayoutOrder=si; row.ZIndex=13; row.Parent=aList; corner(row,UDim.new(0,7))
+            local dot=Instance.new("Frame"); dot.Size=UDim2.new(0,7,0,7); dot.Position=UDim2.new(0,9,0.5,-3.5)
+            dot.BackgroundColor3=C.Accent; dot.BorderSizePixel=0; dot.ZIndex=14; dot.Parent=row; corner(dot,UDim.new(1,0))
+            local rlbl=Instance.new("TextLabel"); rlbl.Size=UDim2.new(1,-26,1,0); rlbl.Position=UDim2.new(0,22,0,0)
+            rlbl.BackgroundTransparency=1; rlbl.Text=sname; rlbl.TextColor3=C.Text; rlbl.TextSize=11
+            rlbl.Font=Enum.Font.Gotham; rlbl.TextXAlignment=Enum.TextXAlignment.Left; rlbl.ZIndex=14; rlbl.Parent=row
+        end
+        aList.CanvasSize=UDim2.new(0,0,0,aLL.AbsoluteContentSize.Y+16)
+    end)
+    item.MouseEnter:Connect(function() if not iSel then tw(item,{BackgroundColor3=C.SurfaceC},0.1) end end)
+    item.MouseLeave:Connect(function() if not iSel then tw(item,{BackgroundColor3=C.Surface},0.1) end end)
 end
 
 local function buildMiscTab()
@@ -939,9 +927,7 @@ local function buildMiscTab()
         table.sort(unique,function(a,b) return a:lower()<b:lower() end)
         allBrainrots=unique
         for _,it in pairs(dropdownItems) do it:Destroy() end; dropdownItems={}
-        for i,name in ipairs(allBrainrots) do
-            createDropdownItem(name,i,aList,aLL,emLbl)
-        end
+        for i,name in ipairs(allBrainrots) do createDropdownItem(name,i,aList,aLL,emLbl) end
         dropLL:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
             DropList.CanvasSize=UDim2.new(0,0,0,dropLL.AbsoluteContentSize.Y+16)
             if dropOpen then DropPanel.Size=UDim2.new(1,0,0,math.min(dropLL.AbsoluteContentSize.Y+16+37,210)) end
@@ -960,7 +946,6 @@ local function buildMiscTab()
         end
     end)
 
-    -- Popup
     PopupFrame=Instance.new("Frame"); PopupFrame.Size=UDim2.new(0,330,0,62)
     PopupFrame.Position=UDim2.new(0.5,-165,0,-100); PopupFrame.BackgroundColor3=C.Surface
     PopupFrame.BorderSizePixel=0; PopupFrame.Visible=false; PopupFrame.ZIndex=200; PopupFrame.Parent=ScreenGui
@@ -977,16 +962,10 @@ local function buildMiscTab()
     PopBot.BackgroundTransparency=1; PopBot.Text=""; PopBot.TextColor3=C.Text
     PopBot.TextSize=13; PopBot.Font=Enum.Font.GothamBold; PopBot.TextXAlignment=Enum.TextXAlignment.Left; PopBot.ZIndex=201; PopBot.Parent=PopupFrame
 
-    task.spawn(function()
-        loadBrainrots()
-        updateActiveList(aList,aLL,emLbl)
-        monitorGameFolder()
-    end)
+    task.spawn(function() loadBrainrots(); monitorGameFolder() end)
 end
 
--- ========================
--- GUI OPEN/CLOSE + DRAG
--- ========================
+-- GUI CONTROLS
 local guiOpen=true
 local function setOpen(open)
     guiOpen=open
@@ -1021,7 +1000,6 @@ UserInputService.InputChanged:Connect(function(inp)
     end
 end)
 
--- BUILD EVERYTHING
 buildHomeTab()
 buildVisualTab()
 buildPlayerTab()
