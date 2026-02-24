@@ -246,7 +246,7 @@ local ContentArea=Instance.new("Frame")
 ContentArea.Size=UDim2.new(1,0,1,-CONTENT_Y); ContentArea.Position=UDim2.new(0,0,0,CONTENT_Y)
 ContentArea.BackgroundTransparency=1; ContentArea.ZIndex=10; ContentArea.Parent=Main
 
--- SCROLLBAR (Player tab only, draggable)
+-- SCROLLBAR
 local sbTrack=Instance.new("Frame")
 sbTrack.Size=UDim2.new(0,5,1,-(10*2+CONTENT_Y)); sbTrack.Position=UDim2.new(1,-9,0,CONTENT_Y+10)
 sbTrack.BackgroundColor3=C.SurfaceC; sbTrack.BorderSizePixel=0
@@ -256,22 +256,16 @@ local sbThumb=Instance.new("Frame")
 sbThumb.Size=UDim2.new(1,0,0,40); sbThumb.BackgroundColor3=C.Accent
 sbThumb.BorderSizePixel=0; sbThumb.ZIndex=21; sbThumb.Parent=sbTrack
 corner(sbThumb,UDim.new(1,0))
--- TextButton over thumb so it actually captures touch/click
 local sbHit=Instance.new("TextButton")
 sbHit.Size=UDim2.new(1,16,1,16); sbHit.Position=UDim2.new(0,-8,0,-8)
 sbHit.BackgroundTransparency=1; sbHit.Text=""; sbHit.ZIndex=22; sbHit.Parent=sbThumb
 
--- SCROLL STATE (Frame-based, no ScrollingFrame)
-local scrollYs={}
-local maxScrolls={}
-local tabPageClips={}  -- Frame+ClipsDescendants, the visible window
-local tabPages={}      -- Frame inside clip, content that moves
-local tabs={}
+-- SCROLL STATE
+local scrollYs={}; local maxScrolls={}
+local tabPageClips={}; local tabPages={}; local tabs={}
 local activeTab=nil
-local warningAcknowledged=false
-local playerTabWarningActive=false
-local warningOverlay
-local switchTab
+local warningAcknowledged=false; local playerTabWarningActive=false
+local warningOverlay; local switchTab
 
 local function updateScrollbar()
     if activeTab~="Player" then return end
@@ -294,13 +288,12 @@ local function setScrollY(key,y)
     local page=tabPages[key]; local clip=tabPageClips[key]
     if not page or not clip then return end
     local maxY=maxScrolls[key] or 0
-    y=math.clamp(y,0,maxY)
-    scrollYs[key]=y
+    y=math.clamp(y,0,maxY); scrollYs[key]=y
     page.Position=UDim2.new(0,0,0,-y)
     if key=="Player" then updateScrollbar() end
 end
 
--- Scrollbar thumb drag
+-- Scrollbar drag
 local sbDragging=false; local sbDragStartY=0; local sbDragStartScroll=0
 sbHit.InputBegan:Connect(function(inp)
     if inp.UserInputType==Enum.UserInputType.MouseButton1 or inp.UserInputType==Enum.UserInputType.Touch then
@@ -310,24 +303,19 @@ end)
 UserInputService.InputChanged:Connect(function(inp)
     if not sbDragging then return end
     if inp.UserInputType==Enum.UserInputType.MouseMovement or inp.UserInputType==Enum.UserInputType.Touch then
-        local trackH=sbTrack.AbsoluteSize.Y
-        local thumbH=sbThumb.AbsoluteSize.Y
-        local scrollRange=trackH-thumbH
-        if scrollRange<=0 then return end
+        local trackH=sbTrack.AbsoluteSize.Y; local thumbH=sbThumb.AbsoluteSize.Y
+        local scrollRange=trackH-thumbH; if scrollRange<=0 then return end
         local delta=inp.Position.Y-sbDragStartY
         local scrollDelta=(delta/scrollRange)*(maxScrolls["Player"] or 0)
         setScrollY("Player",sbDragStartScroll+scrollDelta)
     end
 end)
 UserInputService.InputEnded:Connect(function(inp)
-    if inp.UserInputType==Enum.UserInputType.MouseButton1 or inp.UserInputType==Enum.UserInputType.Touch then
-        sbDragging=false
-    end
+    if inp.UserInputType==Enum.UserInputType.MouseButton1 or inp.UserInputType==Enum.UserInputType.Touch then sbDragging=false end
 end)
 
--- TOUCH SCROLL (UIS global — works because children are Frames/TextButtons not ScrollingFrames)
+-- TOUCH SCROLL
 local touchScrolling=false; local touchScrollKey=nil; local touchStartY=0; local touchStartCanvas=0
-
 UserInputService.InputBegan:Connect(function(inp)
     if inp.UserInputType~=Enum.UserInputType.Touch then return end
     if sbDragging then return end
@@ -343,7 +331,6 @@ UserInputService.InputBegan:Connect(function(inp)
         end
     end
 end)
-
 UserInputService.InputChanged:Connect(function(inp)
     if inp.UserInputType==Enum.UserInputType.Touch then
         if not touchScrolling or not touchScrollKey or sbDragging then return end
@@ -352,14 +339,10 @@ UserInputService.InputChanged:Connect(function(inp)
     elseif inp.UserInputType==Enum.UserInputType.MouseWheel then
         if playerTabWarningActive then return end
         for key,clip in pairs(tabPageClips) do
-            if clip.Visible then
-                setScrollY(key,(scrollYs[key] or 0)-inp.Position.Z*50)
-                break
-            end
+            if clip.Visible then setScrollY(key,(scrollYs[key] or 0)-inp.Position.Z*50); break end
         end
     end
 end)
-
 UserInputService.InputEnded:Connect(function(inp)
     if inp.UserInputType==Enum.UserInputType.Touch then touchScrolling=false; touchScrollKey=nil end
 end)
@@ -399,7 +382,7 @@ switchTab=function(key)
     end
 end
 
--- BUILD TAB PAGES using Frame+ClipsDescendants (NO ScrollingFrame)
+-- BUILD TAB PAGES (Frame+ClipsDescendants, no ScrollingFrame)
 for _,def in ipairs(tabDefs) do
     local btn=Instance.new("TextButton")
     btn.Size=UDim2.new(1/TAB_COUNT,0,1,-TAB_PILL_V*2); btn.Position=UDim2.new(def.idx/TAB_COUNT,0,0,TAB_PILL_V)
@@ -407,14 +390,12 @@ for _,def in ipairs(tabDefs) do
     btn.Text=def.icon.."  "..def.label; btn.TextColor3=C.TextDim
     btn.TextSize=10; btn.Font=Enum.Font.GothamMedium; btn.ZIndex=13; btn.Parent=TabBarOuter
 
-    -- Clip frame = the visible window
     local clip=Instance.new("Frame")
     clip.Name=def.key.."Clip"; clip.Size=UDim2.new(1,0,1,0)
     clip.BackgroundTransparency=1; clip.ClipsDescendants=true
     clip.ZIndex=11; clip.Visible=false; clip.Parent=ContentArea
     tabPageClips[def.key]=clip
 
-    -- Content frame = what actually scrolls by moving Y position
     local page=Instance.new("Frame")
     page.Name=def.key.."Page"; page.Size=UDim2.new(1,0,0,100)
     page.Position=UDim2.new(0,0,0,0); page.BackgroundTransparency=1
@@ -429,14 +410,17 @@ for _,def in ipairs(tabDefs) do
     pp.PaddingTop=UDim.new(0,14); pp.PaddingBottom=UDim.new(0,18)
     pp.PaddingLeft=UDim.new(0,14); pp.PaddingRight=UDim.new(0,isPlayer and 18 or 14); pp.Parent=page
 
+    -- FIX: task.defer so clip.AbsoluteSize.Y is valid before calculating maxScroll
     pl:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
         local contentH=pl.AbsoluteContentSize.Y+32
         page.Size=UDim2.new(1,0,0,contentH)
-        local clipH=clip.AbsoluteSize.Y>0 and clip.AbsoluteSize.Y or MAIN_H-CONTENT_Y
-        maxScrolls[def.key]=math.max(0,contentH-clipH)
-        if isPlayer and activeTab=="Player" and not playerTabWarningActive then
-            task.defer(updateScrollbar)
-        end
+        task.defer(function()
+            local clipH=clip.AbsoluteSize.Y>0 and clip.AbsoluteSize.Y or (MAIN_H-CONTENT_Y)
+            maxScrolls[def.key]=math.max(0,contentH-clipH)
+            if isPlayer and activeTab=="Player" and not playerTabWarningActive then
+                updateScrollbar()
+            end
+        end)
     end)
 
     tabs[def.key]=btn
@@ -605,7 +589,9 @@ local flyEnabled=false; local flyBodyVel=nil; local flyBodyGyro=nil; local flyCo
 local flyUp=false; local flyDown=false; local FLY_SPEED=60
 local speedOverride=false; local jumpOverride=false; local sliderSpeed=16; local sliderJump=50
 local teleportOnSpawn=false; local godmodeOn=false; local lavaTouchConns={}; local disabledParts={}
-local flingEnabled=false; local flingBAV=nil; local flingTouchConn=nil; local flingDebounce={}
+local flingEnabled=false; local flingBAV=nil
+local flingTouchConn={}  -- FIX: table not nil, holds all per-part connections
+local flingDebounce={}
 local speedSyncConn=nil; local jumpSyncConn=nil
 
 local function getChar() return LocalPlayer.Character end
@@ -698,16 +684,19 @@ local function disableFly()
     local h=getHum(); if h then h.PlatformStand=false end
 end
 
+-- FIX: connect Touched on every BasePart, not the Model
 local function enableFling()
     local hrp=getHRP(); if not hrp then return end
     if flingBAV then flingBAV:Destroy() end
     flingBAV=Instance.new("BodyAngularVelocity")
-    flingBAV.AngularVelocity=Vector3.new(0,20,0); flingBAV.MaxTorque=Vector3.new(0,4e4,0); flingBAV.Parent=hrp
+    flingBAV.AngularVelocity=Vector3.new(0,20,0)
+    flingBAV.MaxTorque=Vector3.new(0,4e4,0)
+    flingBAV.Parent=hrp
+    for _,c in pairs(flingTouchConn) do c:Disconnect() end
+    flingTouchConn={}; flingDebounce={}
     local char=getChar()
-    if flingTouchConn then flingTouchConn:Disconnect() end
-    flingDebounce={}
     if char then
-        flingTouchConn=char.Touched:Connect(function(part)
+        local function onTouched(part)
             if not flingEnabled then return end
             local oc=part.Parent; if not oc or oc==char then return end
             local oh=oc:FindFirstChildOfClass("Humanoid"); local ohrp=oc:FindFirstChild("HumanoidRootPart")
@@ -717,19 +706,33 @@ local function enableFling()
             if not isP then return end
             if flingDebounce[oc] then return end
             flingDebounce[oc]=true
-            local myHRP=getHRP(); local dir=myHRP and (ohrp.Position-myHRP.Position) or Vector3.new(0,1,0)
+            local myHRP=getHRP()
+            local dir=myHRP and (ohrp.Position-myHRP.Position) or Vector3.new(0,1,0)
             if dir.Magnitude>0.01 then dir=dir.Unit else dir=Vector3.new(0,1,0) end
-            local bv=Instance.new("BodyVelocity"); bv.Velocity=dir*400+Vector3.new(0,600,0)
-            bv.MaxForce=Vector3.new(math.huge,math.huge,math.huge); bv.Parent=ohrp
+            local bv=Instance.new("BodyVelocity")
+            bv.Velocity=dir*400+Vector3.new(0,600,0)
+            bv.MaxForce=Vector3.new(math.huge,math.huge,math.huge)
+            bv.Parent=ohrp
             game:GetService("Debris"):AddItem(bv,0.2)
             task.delay(1.5,function() flingDebounce[oc]=nil end)
-        end)
+        end
+        for _,p in pairs(char:GetDescendants()) do
+            if p:IsA("BasePart") then
+                table.insert(flingTouchConn, p.Touched:Connect(onTouched))
+            end
+        end
+        table.insert(flingTouchConn, char.DescendantAdded:Connect(function(p)
+            if p:IsA("BasePart") then
+                table.insert(flingTouchConn, p.Touched:Connect(onTouched))
+            end
+        end))
     end
 end
 local function disableFling()
     flingEnabled=false; flingDebounce={}
     if flingBAV then flingBAV:Destroy(); flingBAV=nil end
-    if flingTouchConn then flingTouchConn:Disconnect(); flingTouchConn=nil end
+    for _,c in pairs(flingTouchConn) do c:Disconnect() end
+    flingTouchConn={}
 end
 
 LocalPlayer.CharacterAdded:Connect(function()
