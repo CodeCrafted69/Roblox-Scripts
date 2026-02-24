@@ -1,5 +1,5 @@
 -- Project Crafted
--- Executor Script (Fixed Scrolling & Camera Focus)
+-- Executor Script
 
 local CoreGui = game:GetService("CoreGui")
 for _, gui in pairs(CoreGui:GetChildren()) do
@@ -246,7 +246,7 @@ local ContentArea=Instance.new("Frame")
 ContentArea.Size=UDim2.new(1,0,1,-CONTENT_Y); ContentArea.Position=UDim2.new(0,0,0,CONTENT_Y)
 ContentArea.BackgroundTransparency=1; ContentArea.ZIndex=10; ContentArea.Parent=Main
 
--- SCROLLBAR
+-- SCROLLBAR (Player tab only, draggable)
 local sbTrack=Instance.new("Frame")
 sbTrack.Size=UDim2.new(0,5,1,-(10*2+CONTENT_Y)); sbTrack.Position=UDim2.new(1,-9,0,CONTENT_Y+10)
 sbTrack.BackgroundColor3=C.SurfaceC; sbTrack.BorderSizePixel=0
@@ -256,16 +256,16 @@ local sbThumb=Instance.new("Frame")
 sbThumb.Size=UDim2.new(1,0,0,40); sbThumb.BackgroundColor3=C.Accent
 sbThumb.BorderSizePixel=0; sbThumb.ZIndex=21; sbThumb.Parent=sbTrack
 corner(sbThumb,UDim.new(1,0))
-
--- FIX: Capture input to sink camera movement
+-- TextButton over thumb so it actually captures touch/click
 local sbHit=Instance.new("TextButton")
-sbHit.Size=UDim2.new(3,0,1,0); sbHit.Position=UDim2.new(-1,0,0,0)
+sbHit.Size=UDim2.new(1,16,1,16); sbHit.Position=UDim2.new(0,-8,0,-8)
 sbHit.BackgroundTransparency=1; sbHit.Text=""; sbHit.ZIndex=22; sbHit.Parent=sbThumb
 
+-- SCROLL STATE (Frame-based, no ScrollingFrame)
 local scrollYs={}
 local maxScrolls={}
-local tabPageClips={}
-local tabPages={}
+local tabPageClips={}  -- Frame+ClipsDescendants, the visible window
+local tabPages={}      -- Frame inside clip, content that moves
 local tabs={}
 local activeTab=nil
 local warningAcknowledged=false
@@ -278,15 +278,16 @@ local function updateScrollbar()
     if playerTabWarningActive then sbTrack.Visible=false; return end
     local trackH=sbTrack.AbsoluteSize.Y
     if trackH<=0 then return end
-    local maxY = maxScrolls["Player"] or 0
-    local clipH = (tabPageClips["Player"] and tabPageClips["Player"].AbsoluteSize.Y) or 1
-    if maxY <= 0 then sbTrack.Visible=false; return end
+    local maxY=maxScrolls["Player"] or 0
+    if maxY<=0 then sbTrack.Visible=false; return end
     sbTrack.Visible=true
-    local contentH = maxY + clipH
-    local thumbH = math.max(28, trackH * (clipH / contentH))
-    local pct = math.clamp((scrollYs["Player"] or 0) / maxY, 0, 1)
-    sbThumb.Size = UDim2.new(1, 0, 0, thumbH)
-    sbThumb.Position = UDim2.new(0, 0, 0, pct * (trackH - thumbH))
+    local clip=tabPageClips["Player"]
+    local clipH=clip and clip.AbsoluteSize.Y or 1
+    local contentH=maxY+clipH
+    local thumbH=math.max(28,trackH*(clipH/contentH))
+    local pct=maxY>0 and math.clamp((scrollYs["Player"] or 0)/maxY,0,1) or 0
+    sbThumb.Size=UDim2.new(1,0,0,thumbH)
+    sbThumb.Position=UDim2.new(0,0,0,pct*(trackH-thumbH))
 end
 
 local function setScrollY(key,y)
@@ -299,6 +300,7 @@ local function setScrollY(key,y)
     if key=="Player" then updateScrollbar() end
 end
 
+-- Scrollbar thumb drag
 local sbDragging=false; local sbDragStartY=0; local sbDragStartScroll=0
 sbHit.InputBegan:Connect(function(inp)
     if inp.UserInputType==Enum.UserInputType.MouseButton1 or inp.UserInputType==Enum.UserInputType.Touch then
@@ -323,7 +325,9 @@ UserInputService.InputEnded:Connect(function(inp)
     end
 end)
 
+-- TOUCH SCROLL (UIS global — works because children are Frames/TextButtons not ScrollingFrames)
 local touchScrolling=false; local touchScrollKey=nil; local touchStartY=0; local touchStartCanvas=0
+
 UserInputService.InputBegan:Connect(function(inp)
     if inp.UserInputType~=Enum.UserInputType.Touch then return end
     if sbDragging then return end
@@ -339,6 +343,7 @@ UserInputService.InputBegan:Connect(function(inp)
         end
     end
 end)
+
 UserInputService.InputChanged:Connect(function(inp)
     if inp.UserInputType==Enum.UserInputType.Touch then
         if not touchScrolling or not touchScrollKey or sbDragging then return end
@@ -354,6 +359,7 @@ UserInputService.InputChanged:Connect(function(inp)
         end
     end
 end)
+
 UserInputService.InputEnded:Connect(function(inp)
     if inp.UserInputType==Enum.UserInputType.Touch then touchScrolling=false; touchScrollKey=nil end
 end)
@@ -393,6 +399,7 @@ switchTab=function(key)
     end
 end
 
+-- BUILD TAB PAGES using Frame+ClipsDescendants (NO ScrollingFrame)
 for _,def in ipairs(tabDefs) do
     local btn=Instance.new("TextButton")
     btn.Size=UDim2.new(1/TAB_COUNT,0,1,-TAB_PILL_V*2); btn.Position=UDim2.new(def.idx/TAB_COUNT,0,0,TAB_PILL_V)
@@ -400,12 +407,14 @@ for _,def in ipairs(tabDefs) do
     btn.Text=def.icon.."  "..def.label; btn.TextColor3=C.TextDim
     btn.TextSize=10; btn.Font=Enum.Font.GothamMedium; btn.ZIndex=13; btn.Parent=TabBarOuter
 
-    local clip=Instance.new("TextButton") -- Fixed: Using TextButton to sink camera input
+    -- Clip frame = the visible window
+    local clip=Instance.new("Frame")
     clip.Name=def.key.."Clip"; clip.Size=UDim2.new(1,0,1,0)
-    clip.BackgroundTransparency=1; clip.ClipsDescendants=true; clip.Text = ""
-    clip.AutoButtonColor = false; clip.ZIndex=11; clip.Visible=false; clip.Parent=ContentArea
+    clip.BackgroundTransparency=1; clip.ClipsDescendants=true
+    clip.ZIndex=11; clip.Visible=false; clip.Parent=ContentArea
     tabPageClips[def.key]=clip
 
+    -- Content frame = what actually scrolls by moving Y position
     local page=Instance.new("Frame")
     page.Name=def.key.."Page"; page.Size=UDim2.new(1,0,0,100)
     page.Position=UDim2.new(0,0,0,0); page.BackgroundTransparency=1
@@ -421,9 +430,9 @@ for _,def in ipairs(tabDefs) do
     pp.PaddingLeft=UDim.new(0,14); pp.PaddingRight=UDim.new(0,isPlayer and 18 or 14); pp.Parent=page
 
     pl:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-        local contentH=pl.AbsoluteContentSize.Y + pp.PaddingTop.Offset + pp.PaddingBottom.Offset
+        local contentH=pl.AbsoluteContentSize.Y+32
         page.Size=UDim2.new(1,0,0,contentH)
-        local clipH=clip.AbsoluteSize.Y > 0 and clip.AbsoluteSize.Y or (MAIN_H-CONTENT_Y)
+        local clipH=clip.AbsoluteSize.Y>0 and clip.AbsoluteSize.Y or MAIN_H-CONTENT_Y
         maxScrolls[def.key]=math.max(0,contentH-clipH)
         if isPlayer and activeTab=="Player" and not playerTabWarningActive then
             task.defer(updateScrollbar)
@@ -689,7 +698,6 @@ local function disableFly()
     local h=getHum(); if h then h.PlatformStand=false end
 end
 
--- FIX FOR ERROR 1: Touched Error (Redirected to BaseParts)
 local function enableFling()
     local hrp=getHRP(); if not hrp then return end
     if flingBAV then flingBAV:Destroy() end
@@ -699,28 +707,23 @@ local function enableFling()
     if flingTouchConn then flingTouchConn:Disconnect() end
     flingDebounce={}
     if char then
-        -- Models don't have .Touched, we must connect to its physical Parts
-        for _, part in pairs(char:GetChildren()) do
-            if part:IsA("BasePart") then
-                part.Touched:Connect(function(hit)
-                    if not flingEnabled then return end
-                    local oc=hit.Parent; if not oc or oc==char then return end
-                    local oh=oc:FindFirstChildOfClass("Humanoid"); local ohrp=oc:FindFirstChild("HumanoidRootPart")
-                    if not oh or not ohrp or oh.Health<=0 then return end
-                    local isP=false
-                    for _,p in pairs(Players:GetPlayers()) do if p.Character==oc then isP=true; break end end
-                    if not isP then return end
-                    if flingDebounce[oc] then return end
-                    flingDebounce[oc]=true
-                    local myHRP=getHRP(); local dir=myHRP and (ohrp.Position-myHRP.Position) or Vector3.new(0,1,0)
-                    if dir.Magnitude>0.01 then dir=dir.Unit else dir=Vector3.new(0,1,0) end
-                    local bv=Instance.new("BodyVelocity"); bv.Velocity=dir*400+Vector3.new(0,600,0)
-                    bv.MaxForce=Vector3.new(math.huge,math.huge,math.huge); bv.Parent=ohrp
-                    game:GetService("Debris"):AddItem(bv,0.2)
-                    task.delay(1.5,function() flingDebounce[oc]=nil end)
-                end)
-            end
-        end
+        flingTouchConn=char.Touched:Connect(function(part)
+            if not flingEnabled then return end
+            local oc=part.Parent; if not oc or oc==char then return end
+            local oh=oc:FindFirstChildOfClass("Humanoid"); local ohrp=oc:FindFirstChild("HumanoidRootPart")
+            if not oh or not ohrp or oh.Health<=0 then return end
+            local isP=false
+            for _,p in pairs(Players:GetPlayers()) do if p.Character==oc then isP=true; break end end
+            if not isP then return end
+            if flingDebounce[oc] then return end
+            flingDebounce[oc]=true
+            local myHRP=getHRP(); local dir=myHRP and (ohrp.Position-myHRP.Position) or Vector3.new(0,1,0)
+            if dir.Magnitude>0.01 then dir=dir.Unit else dir=Vector3.new(0,1,0) end
+            local bv=Instance.new("BodyVelocity"); bv.Velocity=dir*400+Vector3.new(0,600,0)
+            bv.MaxForce=Vector3.new(math.huge,math.huge,math.huge); bv.Parent=ohrp
+            game:GetService("Debris"):AddItem(bv,0.2)
+            task.delay(1.5,function() flingDebounce[oc]=nil end)
+        end)
     end
 end
 local function disableFling()
@@ -899,7 +902,6 @@ local function createDropdownItem(name,i,aList,aLL,emLbl)
     item.MouseLeave:Connect(function() if not iSel then tw(item,{BackgroundColor3=C.Surface},0.1) end end)
 end
 
--- FIX FOR ERROR 2: index nil with GetAttribute (Added Nil Guard)
 local function buildMiscTab()
     local page=tabPages["Misc"]
     sectionLbl(page,"BRAINROT MONITOR",1)
@@ -962,7 +964,7 @@ local function buildMiscTab()
     sBox:GetPropertyChangedSignal("Text"):Connect(function() filterDD(sBox.Text) end)
     local function loadBrainrots()
         local folder=ReplicatedStorage:FindFirstChild("Brainrots")
-        if not folder then return end -- Nil Guard added here
+        if not folder then warn("[ProjectCrafted] ReplicatedStorage.Brainrots not found"); return end
         local raw=deepSearch(folder); local seen,unique={},{}
         for _,n in ipairs(raw) do if not seen[n] then seen[n]=true; table.insert(unique,n) end end
         table.sort(unique,function(a,b) return a:lower()<b:lower() end)
