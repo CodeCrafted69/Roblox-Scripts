@@ -241,7 +241,9 @@ TabPill.Size=UDim2.new(1/TAB_COUNT,-2,0,TAB_BAR_H-TAB_PILL_V*2); TabPill.Positio
 TabPill.BackgroundColor3=C.AccentGlow; TabPill.BorderSizePixel=0; TabPill.ZIndex=12; TabPill.Parent=TabBarOuter
 corner(TabPill,UDim.new(0,8)); mkStroke(TabPill,C.AccentDim,1)
 
-local CONTENT_Y=TAB_BAR_Y+TAB_BAR_H+6
+local CONTENT_Y=TAB_BAR_Y+TAB_BAR_H+6  -- 108
+local CLIP_H=MAIN_H-CONTENT_Y           -- 452 — known constant, avoids AbsoluteSize timing issues
+
 local ContentArea=Instance.new("Frame")
 ContentArea.Size=UDim2.new(1,0,1,-CONTENT_Y); ContentArea.Position=UDim2.new(0,0,0,CONTENT_Y)
 ContentArea.BackgroundTransparency=1; ContentArea.ZIndex=10; ContentArea.Parent=Main
@@ -275,25 +277,22 @@ local function updateScrollbar()
     local maxY=maxScrolls["Player"] or 0
     if maxY<=0 then sbTrack.Visible=false; return end
     sbTrack.Visible=true
-    local clip=tabPageClips["Player"]
-    local clipH=clip and clip.AbsoluteSize.Y or 1
-    local contentH=maxY+clipH
-    local thumbH=math.max(28,trackH*(clipH/contentH))
-    local pct=maxY>0 and math.clamp((scrollYs["Player"] or 0)/maxY,0,1) or 0
+    local thumbH=math.max(28,trackH*(CLIP_H/(maxY+CLIP_H)))
+    local pct=math.clamp((scrollYs["Player"] or 0)/maxY,0,1)
     sbThumb.Size=UDim2.new(1,0,0,thumbH)
     sbThumb.Position=UDim2.new(0,0,0,pct*(trackH-thumbH))
 end
 
 local function setScrollY(key,y)
-    local page=tabPages[key]; local clip=tabPageClips[key]
-    if not page or not clip then return end
+    local page=tabPages[key]
+    if not page then return end
     local maxY=maxScrolls[key] or 0
     y=math.clamp(y,0,maxY); scrollYs[key]=y
     page.Position=UDim2.new(0,0,0,-y)
     if key=="Player" then updateScrollbar() end
 end
 
--- Scrollbar drag
+-- Scrollbar thumb drag
 local sbDragging=false; local sbDragStartY=0; local sbDragStartScroll=0
 sbHit.InputBegan:Connect(function(inp)
     if inp.UserInputType==Enum.UserInputType.MouseButton1 or inp.UserInputType==Enum.UserInputType.Touch then
@@ -334,8 +333,7 @@ end)
 UserInputService.InputChanged:Connect(function(inp)
     if inp.UserInputType==Enum.UserInputType.Touch then
         if not touchScrolling or not touchScrollKey or sbDragging then return end
-        local delta=touchStartY-inp.Position.Y
-        setScrollY(touchScrollKey,touchStartCanvas+delta)
+        setScrollY(touchScrollKey,touchStartCanvas+(touchStartY-inp.Position.Y))
     elseif inp.UserInputType==Enum.UserInputType.MouseWheel then
         if playerTabWarningActive then return end
         for key,clip in pairs(tabPageClips) do
@@ -374,6 +372,13 @@ switchTab=function(key)
         tabPageClips[k].Visible=k==key
     end
     if key=="Player" then
+        -- Recalculate maxScroll fresh every time we enter the Player tab
+        local pg=tabPages["Player"]
+        local pll=pg and pg:FindFirstChildOfClass("UIListLayout")
+        if pll then
+            local ch=pll.AbsoluteContentSize.Y+32
+            maxScrolls["Player"]=math.max(0,ch-CLIP_H)
+        end
         if not warningAcknowledged then showPlayerWarning()
         else task.defer(updateScrollbar) end
     else
@@ -382,7 +387,7 @@ switchTab=function(key)
     end
 end
 
--- BUILD TAB PAGES (Frame+ClipsDescendants, no ScrollingFrame)
+-- BUILD TAB PAGES
 for _,def in ipairs(tabDefs) do
     local btn=Instance.new("TextButton")
     btn.Size=UDim2.new(1/TAB_COUNT,0,1,-TAB_PILL_V*2); btn.Position=UDim2.new(def.idx/TAB_COUNT,0,0,TAB_PILL_V)
@@ -410,17 +415,14 @@ for _,def in ipairs(tabDefs) do
     pp.PaddingTop=UDim.new(0,14); pp.PaddingBottom=UDim.new(0,18)
     pp.PaddingLeft=UDim.new(0,14); pp.PaddingRight=UDim.new(0,isPlayer and 18 or 14); pp.Parent=page
 
-    -- FIX: task.defer so clip.AbsoluteSize.Y is valid before calculating maxScroll
+    -- FIX: use CLIP_H constant — never reads AbsoluteSize so timing is irrelevant
     pl:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
         local contentH=pl.AbsoluteContentSize.Y+32
         page.Size=UDim2.new(1,0,0,contentH)
-        task.defer(function()
-            local clipH=clip.AbsoluteSize.Y>0 and clip.AbsoluteSize.Y or (MAIN_H-CONTENT_Y)
-            maxScrolls[def.key]=math.max(0,contentH-clipH)
-            if isPlayer and activeTab=="Player" and not playerTabWarningActive then
-                updateScrollbar()
-            end
-        end)
+        maxScrolls[def.key]=math.max(0,contentH-CLIP_H)
+        if isPlayer and activeTab=="Player" and not playerTabWarningActive then
+            task.defer(updateScrollbar)
+        end
     end)
 
     tabs[def.key]=btn
@@ -590,7 +592,7 @@ local flyUp=false; local flyDown=false; local FLY_SPEED=60
 local speedOverride=false; local jumpOverride=false; local sliderSpeed=16; local sliderJump=50
 local teleportOnSpawn=false; local godmodeOn=false; local lavaTouchConns={}; local disabledParts={}
 local flingEnabled=false; local flingBAV=nil
-local flingTouchConn={}  -- FIX: table not nil, holds all per-part connections
+local flingTouchConn={}
 local flingDebounce={}
 local speedSyncConn=nil; local jumpSyncConn=nil
 
@@ -684,7 +686,7 @@ local function disableFly()
     local h=getHum(); if h then h.PlatformStand=false end
 end
 
--- FIX: connect Touched on every BasePart, not the Model
+-- FIX: only fire on humanoid-bearing characters, wrapped in pcall to silence game script side-effects
 local function enableFling()
     local hrp=getHRP(); if not hrp then return end
     if flingBAV then flingBAV:Destroy() end
@@ -698,22 +700,31 @@ local function enableFling()
     if char then
         local function onTouched(part)
             if not flingEnabled then return end
+            -- Guard: part must be a BasePart that belongs to a player character
+            if not part or not part:IsA("BasePart") then return end
             local oc=part.Parent; if not oc or oc==char then return end
-            local oh=oc:FindFirstChildOfClass("Humanoid"); local ohrp=oc:FindFirstChild("HumanoidRootPart")
+            -- Only act on player characters (must have Humanoid + HumanoidRootPart)
+            local oh=oc:FindFirstChildOfClass("Humanoid")
+            local ohrp=oc:FindFirstChild("HumanoidRootPart")
             if not oh or not ohrp or oh.Health<=0 then return end
             local isP=false
-            for _,p in pairs(Players:GetPlayers()) do if p.Character==oc then isP=true; break end end
+            for _,p in pairs(Players:GetPlayers()) do
+                if p.Character==oc then isP=true; break end
+            end
             if not isP then return end
             if flingDebounce[oc] then return end
             flingDebounce[oc]=true
             local myHRP=getHRP()
             local dir=myHRP and (ohrp.Position-myHRP.Position) or Vector3.new(0,1,0)
             if dir.Magnitude>0.01 then dir=dir.Unit else dir=Vector3.new(0,1,0) end
-            local bv=Instance.new("BodyVelocity")
-            bv.Velocity=dir*400+Vector3.new(0,600,0)
-            bv.MaxForce=Vector3.new(math.huge,math.huge,math.huge)
-            bv.Parent=ohrp
-            game:GetService("Debris"):AddItem(bv,0.2)
+            -- pcall so any game-script errors triggered by the fling don't surface as ours
+            pcall(function()
+                local bv=Instance.new("BodyVelocity")
+                bv.Velocity=dir*400+Vector3.new(0,600,0)
+                bv.MaxForce=Vector3.new(math.huge,math.huge,math.huge)
+                bv.Parent=ohrp
+                game:GetService("Debris"):AddItem(bv,0.2)
+            end)
             task.delay(1.5,function() flingDebounce[oc]=nil end)
         end
         for _,p in pairs(char:GetDescendants()) do
