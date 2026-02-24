@@ -231,13 +231,13 @@ local ContentArea=Instance.new("Frame")
 ContentArea.Size=UDim2.new(1,0,1,-CONTENT_Y); ContentArea.Position=UDim2.new(0,0,0,CONTENT_Y)
 ContentArea.BackgroundTransparency=1; ContentArea.ZIndex=10; ContentArea.Parent=Main
 local sbTrack=Instance.new("Frame")
-sbTrack.Size=UDim2.new(0,5,1,-20); sbTrack.Position=UDim2.new(1,-9,0,10)
+sbTrack.Size=UDim2.new(0,5,0,CLIP_H-20); sbTrack.Position=UDim2.new(1,-9,0,10)
 sbTrack.BackgroundColor3=C.SurfaceC; sbTrack.BorderSizePixel=0
 sbTrack.Visible=false; sbTrack.ZIndex=20; sbTrack.Parent=ContentArea
 corner(sbTrack,UDim.new(1,0))
 local sbThumb=Instance.new("Frame")
-sbThumb.Size=UDim2.new(1,0,0,40); sbThumb.BackgroundColor3=C.Accent
-sbThumb.BorderSizePixel=0; sbThumb.ZIndex=21; sbThumb.Parent=sbTrack
+sbThumb.Size=UDim2.new(1,0,0,40); sbThumb.Position=UDim2.new(0,0,0,0)
+sbThumb.BackgroundColor3=C.Accent; sbThumb.BorderSizePixel=0; sbThumb.ZIndex=21; sbThumb.Parent=sbTrack
 corner(sbThumb,UDim.new(1,0))
 local sbHit=Instance.new("TextButton")
 sbHit.Size=UDim2.new(1,16,1,16); sbHit.Position=UDim2.new(0,-8,0,-8)
@@ -247,18 +247,20 @@ local tabPageClips={}; local tabPages={}; local tabs={}
 local activeTab=nil
 local warningAcknowledged=false; local playerTabWarningActive=false
 local warningOverlay; local switchTab
+local SB_TRACK_H=CLIP_H-20
 local function updateScrollbar()
 if activeTab~="Player" then return end
 if playerTabWarningActive then sbTrack.Visible=false; return end
-local trackH=sbTrack.AbsoluteSize.Y
-if trackH<=0 then return end
 local maxY=maxScrolls["Player"] or 0
 if maxY<=0 then sbTrack.Visible=false; return end
 sbTrack.Visible=true
-local thumbH=math.max(28,trackH*(CLIP_H/(maxY+CLIP_H)))
+local ratio=CLIP_H/(maxY+CLIP_H)
+local minThumbRatio=28/SB_TRACK_H
+local thumbRatio=math.max(minThumbRatio,ratio)
 local pct=math.clamp((scrollYs["Player"] or 0)/maxY,0,1)
-sbThumb.Size=UDim2.new(1,0,0,thumbH)
-sbThumb.Position=UDim2.new(0,0,0,pct*(trackH-thumbH))
+local thumbOffsetRatio=(1-thumbRatio)*pct
+sbThumb.Size=UDim2.new(1,0,thumbRatio,0)
+sbThumb.Position=UDim2.new(0,0,thumbOffsetRatio,0)
 end
 local function recalcMaxScroll(key)
 local pg=tabPages[key]; if not pg then return end
@@ -295,7 +297,8 @@ end)
 UserInputService.InputChanged:Connect(function(inp)
 if not sbDragging then return end
 if inp.UserInputType==Enum.UserInputType.MouseMovement or inp.UserInputType==Enum.UserInputType.Touch then
-local trackH=sbTrack.AbsoluteSize.Y; local thumbH=sbThumb.AbsoluteSize.Y
+local trackH=SB_TRACK_H; local thumbH=sbThumb.AbsoluteSize.Y
+if thumbH<=0 then thumbH=math.max(28,SB_TRACK_H*(CLIP_H/((maxScrolls["Player"] or 0)+CLIP_H))) end
 local scrollRange=trackH-thumbH; if scrollRange<=0 then return end
 local delta=inp.Position.Y-sbDragStartY
 local scrollDelta=(delta/scrollRange)*(maxScrolls["Player"] or 0)
@@ -404,7 +407,7 @@ pl:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     page.Size=UDim2.new(1,0,0,contentH)
     maxScrolls[def.key]=math.max(0,contentH-CLIP_H)
     if isPlayer and activeTab=="Player" and not playerTabWarningActive then
-        task.defer(updateScrollbar)
+        updateScrollbar()
     end
 end)
 
@@ -562,8 +565,8 @@ for _,h in pairs(activeHighlights) do if h and h.Parent then h:Destroy() end end
 end
 end)
 end
-local flyEnabled=false; local flyBodyVel=nil; local flyBodyGyro=nil; local flyConn=nil
-local flyUp=false; local flyDown=false; local FLY_SPEED=60
+local flyEnabled=false; local flyBodyVel=nil; local flyConn=nil; local flyAnimConn=nil
+local flyUp=false; local flyDown=false; local FLY_SPEED=60; local flySavedWalkSpeed=nil
 local speedOverride=false; local jumpOverride=false; local sliderSpeed=16; local sliderJump=50
 local teleportOnSpawn=false; local godmodeOn=false; local lavaTouchConns={}; local disabledParts={}
 local flingEnabled=false; local flingHeartbeat=nil; local flingDebounce={}
@@ -620,39 +623,102 @@ for _,e in ipairs(disabledParts) do if e.part and e.part.Parent then e.part.CanT
 end
 local function enableFly()
 local hrp=getHRP(); local hum=getHum(); if not hrp or not hum then return end
-if flyBodyVel then flyBodyVel:Destroy() end; if flyBodyGyro then flyBodyGyro:Destroy() end
-local bv=Instance.new("BodyVelocity"); bv.Velocity=Vector3.zero; bv.MaxForce=Vector3.new(1e5,1e5,1e5); bv.Parent=hrp; flyBodyVel=bv
-local bg=Instance.new("BodyGyro"); bg.MaxTorque=Vector3.new(1e5,1e5,1e5); bg.P=1e5; bg.Parent=hrp; flyBodyGyro=bg
-hum.PlatformStand=true
+if flyBodyVel then flyBodyVel:Destroy(); flyBodyVel=nil end
+if flyAnimConn then flyAnimConn:Disconnect(); flyAnimConn=nil end
+flySavedWalkSpeed=hum.WalkSpeed
+
+-- Disable falling and jumping states so no fall animation plays
+pcall(function() hum:SetStateEnabled(Enum.HumanoidStateType.Freefall,false) end)
+pcall(function() hum:SetStateEnabled(Enum.HumanoidStateType.Jumping,false) end)
+pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end)
+
+-- Stop all currently playing animation tracks and block new ones
+local animator=hum:FindFirstChildOfClass("Animator")
+if animator then
+    for _,track in pairs(animator:GetPlayingAnimationTracks()) do
+        pcall(function() track:Stop(0) end)
+    end
+    flyAnimConn=animator.AnimationPlayed:Connect(function(track)
+        if flyEnabled then pcall(function() track:Stop(0) end) end
+    end)
+end
+
+local bv=Instance.new("BodyVelocity")
+bv.Name="PCFlyVel"; bv.Velocity=Vector3.zero
+bv.MaxForce=Vector3.new(1e5,1e5,1e5); bv.Parent=hrp; flyBodyVel=bv
+
 if flyConn then flyConn:Disconnect() end
 flyConn=RunService.Heartbeat:Connect(function()
-if not flyEnabled then return end
-local hrp2=getHRP(); if not hrp2 then return end
-local cf=workspace.CurrentCamera.CFrame
-local camLook=cf.LookVector; local camRight=cf.RightVector
-local move=Vector3.zero; local hum2=getHum()
-if UserInputService:IsKeyDown(Enum.KeyCode.W) then move=move+camLook end
-if UserInputService:IsKeyDown(Enum.KeyCode.S) then move=move-camLook end
-if UserInputService:IsKeyDown(Enum.KeyCode.A) then move=move-camRight end
-if UserInputService:IsKeyDown(Enum.KeyCode.D) then move=move+camRight end
-if UserInputService:IsKeyDown(Enum.KeyCode.Space) or flyUp then move=move+Vector3.new(0,1,0) end
-if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or flyDown then move=move-Vector3.new(0,1,0) end
-if hum2 and hum2.MoveDirection.Magnitude>0.1 then
-local md=hum2.MoveDirection
-local fl=Vector3.new(camLook.X,0,camLook.Z); local fr=Vector3.new(camRight.X,0,camRight.Z)
-if fl.Magnitude>0.001 then fl=fl.Unit end; if fr.Magnitude>0.001 then fr=fr.Unit end
-move=move+camLookmd:Dot(fl)+camRightmd:Dot(fr)
-end
-if move.Magnitude>0 then move=move.Unit end
-bv.Velocity=move*FLY_SPEED; bg.CFrame=cf
+    if not flyEnabled then return end
+    local hrp2=getHRP(); if not hrp2 then return end
+    if not flyBodyVel or not flyBodyVel.Parent then return end
+    local hum2=getHum()
+
+    -- Keep WalkSpeed at 0 every frame so game scripts cannot fight the BodyVelocity
+    if hum2 then hum2.WalkSpeed=0 end
+
+    -- Keep humanoid in Running state every frame to suppress falling animation
+    pcall(function()
+        if hum2 then
+            local st=hum2:GetState()
+            if st==Enum.HumanoidStateType.Freefall or st==Enum.HumanoidStateType.FallingDown or st==Enum.HumanoidStateType.Jumping then
+                hum2:ChangeState(Enum.HumanoidStateType.Running)
+            end
+        end
+    end)
+
+    local cf=workspace.CurrentCamera.CFrame
+    local camLook=cf.LookVector; local camRight=cf.RightVector
+    local move=Vector3.zero
+
+    -- Check if any keyboard key is being held (PC)
+    local hasKB=UserInputService:IsKeyDown(Enum.KeyCode.W) or UserInputService:IsKeyDown(Enum.KeyCode.S)
+        or UserInputService:IsKeyDown(Enum.KeyCode.A) or UserInputService:IsKeyDown(Enum.KeyCode.D)
+
+    if hasKB then
+        -- PC: camera-relative WASD
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then move=move+camLook end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then move=move-camLook end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then move=move-camRight end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then move=move+camRight end
+    elseif hum2 then
+        -- Mobile: use thumbstick MoveDirection (world-space XZ) directly
+        local md=hum2.MoveDirection
+        if md.Magnitude>0.1 then
+            local flatMd=Vector3.new(md.X,0,md.Z)
+            if flatMd.Magnitude>0.001 then
+                move=move+flatMd.Unit
+            end
+        end
+    end
+
+    -- Vertical: Space/Shift on PC, arrow buttons on mobile
+    if UserInputService:IsKeyDown(Enum.KeyCode.Space) or flyUp then move=move+Vector3.new(0,1,0) end
+    if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or flyDown then move=move-Vector3.new(0,1,0) end
+
+    if move.Magnitude>0 then move=move.Unit end
+    flyBodyVel.Velocity=move*FLY_SPEED
+
+    -- Zero angular velocity each frame to prevent the character spinning in air
+    pcall(function() hrp2.AssemblyAngularVelocity=Vector3.zero end)
 end)
 end
 local function disableFly()
 flyEnabled=false
 if flyConn then flyConn:Disconnect(); flyConn=nil end
 if flyBodyVel then flyBodyVel:Destroy(); flyBodyVel=nil end
-if flyBodyGyro then flyBodyGyro:Destroy(); flyBodyGyro=nil end
-local h=getHum(); if h then h.PlatformStand=false end
+if flyAnimConn then flyAnimConn:Disconnect(); flyAnimConn=nil end
+local hum=getHum()
+if hum then
+pcall(function() hum:SetStateEnabled(Enum.HumanoidStateType.Freefall,true) end)
+pcall(function() hum:SetStateEnabled(Enum.HumanoidStateType.Jumping,true) end)
+if speedOverride then
+hum.WalkSpeed=sliderSpeed
+elseif flySavedWalkSpeed then
+hum.WalkSpeed=flySavedWalkSpeed
+end
+end
+flySavedWalkSpeed=nil
 end
 local function enableFling()
 flingDebounce={}
@@ -734,7 +800,7 @@ else tw(jpTr,{BackgroundColor3=C.Off},0.2); tw(jpKn,{Position=UDim2.new(0,3,0.5,
 end)
 makeSlider(page,"Jump Power",30,150,50,5,function(v) applyJump(v) end)
 sectionLbl(page,"FLY",6)
-local _,flyTr,flyKn,flyHit,flyStr=toggleRow(page,"Fly Mode","Directional: fly faces where camera looks",7)
+local _,flyTr,flyKn,flyHit,flyStr=toggleRow(page,"Fly Mode","WASD/thumbstick to move  |  arrows to go up/down",7)
 flyHit.MouseButton1Click:Connect(function()
 flyEnabled=not flyEnabled
 if flyEnabled then tw(flyTr,{BackgroundColor3=C.AccentDim},0.2); tw(flyKn,{Position=UDim2.new(0,22,0.5,-8),BackgroundColor3=C.Text},0.2,Enum.EasingStyle.Back); flyStr.Color=C.Accent; FlyPanel.Visible=true; enableFly()
