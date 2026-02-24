@@ -242,7 +242,7 @@ TabPill.BackgroundColor3=C.AccentGlow; TabPill.BorderSizePixel=0; TabPill.ZIndex
 corner(TabPill,UDim.new(0,8)); mkStroke(TabPill,C.AccentDim,1)
 
 local CONTENT_Y=TAB_BAR_Y+TAB_BAR_H+6  -- 108
-local CLIP_H=MAIN_H-CONTENT_Y           -- 452 — known constant, avoids AbsoluteSize timing issues
+local CLIP_H=MAIN_H-CONTENT_Y           -- 452
 
 local ContentArea=Instance.new("Frame")
 ContentArea.Size=UDim2.new(1,0,1,-CONTENT_Y); ContentArea.Position=UDim2.new(0,0,0,CONTENT_Y)
@@ -281,6 +281,15 @@ local function updateScrollbar()
     local pct=math.clamp((scrollYs["Player"] or 0)/maxY,0,1)
     sbThumb.Size=UDim2.new(1,0,0,thumbH)
     sbThumb.Position=UDim2.new(0,0,0,pct*(trackH-thumbH))
+end
+
+-- FIX: recalculate maxScroll for a key using live AbsoluteContentSize
+local function recalcMaxScroll(key)
+    local pg=tabPages[key]; if not pg then return end
+    local pll=pg:FindFirstChildOfClass("UIListLayout"); if not pll then return end
+    local contentH=pll.AbsoluteContentSize.Y+32
+    pg.Size=UDim2.new(1,0,0,contentH)
+    maxScrolls[key]=math.max(0,contentH-CLIP_H)
 end
 
 local function setScrollY(key,y)
@@ -359,7 +368,7 @@ end
 local function hidePlayerWarning()
     playerTabWarningActive=false
     if warningOverlay then warningOverlay.Visible=false end
-    task.defer(updateScrollbar)
+    task.defer(function() recalcMaxScroll("Player"); updateScrollbar() end)
 end
 
 switchTab=function(key)
@@ -372,15 +381,15 @@ switchTab=function(key)
         tabPageClips[k].Visible=k==key
     end
     if key=="Player" then
-        -- Recalculate maxScroll fresh every time we enter the Player tab
-        local pg=tabPages["Player"]
-        local pll=pg and pg:FindFirstChildOfClass("UIListLayout")
-        if pll then
-            local ch=pll.AbsoluteContentSize.Y+32
-            maxScrolls["Player"]=math.max(0,ch-CLIP_H)
-        end
-        if not warningAcknowledged then showPlayerWarning()
-        else task.defer(updateScrollbar) end
+        -- FIX: clip is now Visible=true, defer so Roblox recomputes AbsoluteContentSize first
+        task.defer(function()
+            recalcMaxScroll("Player")
+            if not warningAcknowledged then
+                showPlayerWarning()
+            else
+                updateScrollbar()
+            end
+        end)
     else
         sbTrack.Visible=false; playerTabWarningActive=false
         if warningOverlay then warningOverlay.Visible=false end
@@ -415,7 +424,6 @@ for _,def in ipairs(tabDefs) do
     pp.PaddingTop=UDim.new(0,14); pp.PaddingBottom=UDim.new(0,18)
     pp.PaddingLeft=UDim.new(0,14); pp.PaddingRight=UDim.new(0,isPlayer and 18 or 14); pp.Parent=page
 
-    -- FIX: use CLIP_H constant — never reads AbsoluteSize so timing is irrelevant
     pl:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
         local contentH=pl.AbsoluteContentSize.Y+32
         page.Size=UDim2.new(1,0,0,contentH)
@@ -591,9 +599,8 @@ local flyEnabled=false; local flyBodyVel=nil; local flyBodyGyro=nil; local flyCo
 local flyUp=false; local flyDown=false; local FLY_SPEED=60
 local speedOverride=false; local jumpOverride=false; local sliderSpeed=16; local sliderJump=50
 local teleportOnSpawn=false; local godmodeOn=false; local lavaTouchConns={}; local disabledParts={}
-local flingEnabled=false; local flingBAV=nil
-local flingTouchConn={}
-local flingDebounce={}
+-- FIX: fling now uses Heartbeat proximity — no BodyAngularVelocity (detected by game's PartAdded anti-cheat)
+local flingEnabled=false; local flingHeartbeat=nil; local flingDebounce={}
 local speedSyncConn=nil; local jumpSyncConn=nil
 
 local function getChar() return LocalPlayer.Character end
@@ -686,64 +693,41 @@ local function disableFly()
     local h=getHum(); if h then h.PlatformStand=false end
 end
 
--- FIX: only fire on humanoid-bearing characters, wrapped in pcall to silence game script side-effects
+-- FIX: Heartbeat proximity fling — no BodyAngularVelocity on our character (anti-cheat safe)
+-- BodyVelocity goes on the TARGET's HRP which is outside our character, so PartAdded on OUR char never fires
 local function enableFling()
-    local hrp=getHRP(); if not hrp then return end
-    if flingBAV then flingBAV:Destroy() end
-    flingBAV=Instance.new("BodyAngularVelocity")
-    flingBAV.AngularVelocity=Vector3.new(0,20,0)
-    flingBAV.MaxTorque=Vector3.new(0,4e4,0)
-    flingBAV.Parent=hrp
-    for _,c in pairs(flingTouchConn) do c:Disconnect() end
-    flingTouchConn={}; flingDebounce={}
-    local char=getChar()
-    if char then
-        local function onTouched(part)
-            if not flingEnabled then return end
-            -- Guard: part must be a BasePart that belongs to a player character
-            if not part or not part:IsA("BasePart") then return end
-            local oc=part.Parent; if not oc or oc==char then return end
-            -- Only act on player characters (must have Humanoid + HumanoidRootPart)
-            local oh=oc:FindFirstChildOfClass("Humanoid")
-            local ohrp=oc:FindFirstChild("HumanoidRootPart")
-            if not oh or not ohrp or oh.Health<=0 then return end
-            local isP=false
-            for _,p in pairs(Players:GetPlayers()) do
-                if p.Character==oc then isP=true; break end
-            end
-            if not isP then return end
-            if flingDebounce[oc] then return end
-            flingDebounce[oc]=true
-            local myHRP=getHRP()
-            local dir=myHRP and (ohrp.Position-myHRP.Position) or Vector3.new(0,1,0)
-            if dir.Magnitude>0.01 then dir=dir.Unit else dir=Vector3.new(0,1,0) end
-            -- pcall so any game-script errors triggered by the fling don't surface as ours
-            pcall(function()
-                local bv=Instance.new("BodyVelocity")
-                bv.Velocity=dir*400+Vector3.new(0,600,0)
-                bv.MaxForce=Vector3.new(math.huge,math.huge,math.huge)
-                bv.Parent=ohrp
-                game:GetService("Debris"):AddItem(bv,0.2)
-            end)
-            task.delay(1.5,function() flingDebounce[oc]=nil end)
-        end
-        for _,p in pairs(char:GetDescendants()) do
-            if p:IsA("BasePart") then
-                table.insert(flingTouchConn, p.Touched:Connect(onTouched))
+    flingDebounce={}
+    if flingHeartbeat then flingHeartbeat:Disconnect() end
+    flingHeartbeat=RunService.Heartbeat:Connect(function()
+        if not flingEnabled then return end
+        local myHRP=getHRP(); if not myHRP then return end
+        for _,p in pairs(Players:GetPlayers()) do
+            if p~=LocalPlayer and p.Character then
+                local ohrp=p.Character:FindFirstChild("HumanoidRootPart")
+                local oh=p.Character:FindFirstChildOfClass("Humanoid")
+                if ohrp and oh and oh.Health>0 then
+                    local dist=(ohrp.Position-myHRP.Position).Magnitude
+                    if dist<5 and not flingDebounce[p] then
+                        flingDebounce[p]=true
+                        local dir=ohrp.Position-myHRP.Position
+                        if dir.Magnitude>0.01 then dir=dir.Unit else dir=Vector3.new(0,1,0) end
+                        pcall(function()
+                            local bv=Instance.new("BodyVelocity")
+                            bv.Velocity=dir*400+Vector3.new(0,600,0)
+                            bv.MaxForce=Vector3.new(math.huge,math.huge,math.huge)
+                            bv.Parent=ohrp
+                            game:GetService("Debris"):AddItem(bv,0.2)
+                        end)
+                        task.delay(1.5,function() flingDebounce[p]=nil end)
+                    end
+                end
             end
         end
-        table.insert(flingTouchConn, char.DescendantAdded:Connect(function(p)
-            if p:IsA("BasePart") then
-                table.insert(flingTouchConn, p.Touched:Connect(onTouched))
-            end
-        end))
-    end
+    end)
 end
 local function disableFling()
     flingEnabled=false; flingDebounce={}
-    if flingBAV then flingBAV:Destroy(); flingBAV=nil end
-    for _,c in pairs(flingTouchConn) do c:Disconnect() end
-    flingTouchConn={}
+    if flingHeartbeat then flingHeartbeat:Disconnect(); flingHeartbeat=nil end
 end
 
 LocalPlayer.CharacterAdded:Connect(function()
@@ -751,7 +735,7 @@ LocalPlayer.CharacterAdded:Connect(function()
     if speedOverride then local h=getHum(); if h then h.WalkSpeed=sliderSpeed end else startSpeedSync() end
     if jumpOverride then local h=getHum(); if h then h.JumpPower=sliderJump end else startJumpSync() end
     if flyEnabled then task.wait(0.2); enableFly() end
-    if flingEnabled then task.wait(0.2); enableFling() end
+    if flingEnabled then enableFling() end
     if godmodeOn then
         for _,e in ipairs(disabledParts) do if e.part and e.part.Parent then e.part.CanTouch=false end end
         scanLavas()
@@ -801,7 +785,7 @@ local function buildPlayerTab()
         else tw(flyTr,{BackgroundColor3=C.Off},0.2); tw(flyKn,{Position=UDim2.new(0,3,0.5,-8),BackgroundColor3=C.TextDim},0.2,Enum.EasingStyle.Back); flyStr.Color=C.Border; FlyPanel.Visible=false; flyUp=false; flyDown=false; disableFly() end
     end)
     sectionLbl(page,"FLING",8)
-    local _,flTr,flKn,flHit,flStr=toggleRow(page,"Fling Mode","Spins you — touch a player to send them flying",9)
+    local _,flTr,flKn,flHit,flStr=toggleRow(page,"Fling Mode","Walk within 5 studs of a player to send them flying",9)
     flHit.MouseButton1Click:Connect(function()
         flingEnabled=not flingEnabled
         if flingEnabled then tw(flTr,{BackgroundColor3=C.AccentDim},0.2); tw(flKn,{Position=UDim2.new(0,22,0.5,-8),BackgroundColor3=C.Text},0.2,Enum.EasingStyle.Back); flStr.Color=C.Accent; enableFling()
