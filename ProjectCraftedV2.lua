@@ -358,7 +358,7 @@ CloseBtn.Size = UDim2.new(0, 32, 0, 32); CloseBtn.AnchorPoint = Vector2.new(1, 0
 CloseBtn.Position = UDim2.new(1, -10, 0.5, 0)
 CloseBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
 CloseBtn.Text = "✕"; CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-CloseBtn.Font = Enum.Font.GothamBold; CloseBtn.TextSize = 14
+CloseBtn.Font = Enum.Font.FredokaOne; CloseBtn.TextSize = 14
 Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 7)
 
 -- ============================================================
@@ -1092,9 +1092,12 @@ onThemeChange(function(th) selHeaderLbl.TextColor3 = th.TextDim end)
 local tagsFrame = Instance.new("Frame", dropCard)
 tagsFrame.Size = UDim2.new(1, 0, 0, 0); tagsFrame.AutomaticSize = Enum.AutomaticSize.Y
 tagsFrame.BackgroundTransparency = 1; tagsFrame.LayoutOrder = 4
-local tagFlow = Instance.new("UIFlowLayout", tagsFrame)
-tagFlow.Padding = UDim2.new(0, 4, 0, 4)
+local tagFlow = Instance.new("UIListLayout", tagsFrame)
+tagFlow.Padding = UDim.new(0, 4)
+tagFlow.FillDirection = Enum.FillDirection.Horizontal
 tagFlow.HorizontalAlignment = Enum.HorizontalAlignment.Left
+tagFlow.VerticalAlignment = Enum.VerticalAlignment.Center
+tagFlow.Wraps = true
 
 -- All dropdown item buttons
 local allDropButtons = {}
